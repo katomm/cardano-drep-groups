@@ -36,20 +36,11 @@ function length(h: Head): number {
   return Number(h.big);
 }
 
-function untilBreak(b: Uint8Array, off: number, perItem: number): number {
-  let p = off;
-  for (;;) {
-    if (p >= b.length) throw new Error('cbor: missing break');
-    if (b[p] === 0xff) return p + 1;
-    for (let i = 0; i < perItem; i++) p = itemEnd(b, p);
-  }
-}
-
-export function itemEnd(b: Uint8Array, off: number): number {
-  // Use an explicit stack to avoid recursion depth limits with deeply nested arrays/maps
-  type StackEntry = { count: number; index: number };
+export function itemEnd(b: Uint8Array, startOff: number): number {
+  // Use an explicit stack to handle all CBOR structures iteratively
+  type StackEntry = { count: number; index: number; isIndefinite?: boolean; perItem?: number };
   const countStack: StackEntry[] = [];
-  let current = off;
+  let current = startOff;
 
   for (;;) {
     const h = readHead(b, current);
@@ -61,8 +52,18 @@ export function itemEnd(b: Uint8Array, off: number): number {
         break;
       case 2:
       case 3: {
-        if (h.indefinite) current = untilBreak(b, h.next, 1);
-        else {
+        if (h.indefinite) {
+          // Process indefinite string/bytes by skipping to break
+          let p = h.next;
+          for (;;) {
+            if (p >= b.length) throw new Error('cbor: missing break');
+            if (b[p] === 0xff) {
+              current = p + 1;
+              break;
+            }
+            p = itemEnd(b, p);
+          }
+        } else {
           const end = h.next + length(h);
           if (end > b.length) throw new Error('cbor: unexpected end');
           current = end;
@@ -72,8 +73,19 @@ export function itemEnd(b: Uint8Array, off: number): number {
       case 4:
       case 5: {
         const perItem = h.major === 4 ? 1 : 2;
-        if (h.indefinite) current = untilBreak(b, h.next, perItem);
-        else {
+        if (h.indefinite) {
+          // Push indefinite container onto stack
+          let p = h.next;
+          if (p >= b.length) throw new Error('cbor: missing break');
+          if (b[p] === 0xff) {
+            // Empty indefinite container
+            current = p + 1;
+          } else {
+            countStack.push({ count: -1, index: 0, isIndefinite: true, perItem });
+            current = p;
+            continue;
+          }
+        } else {
           const n = length(h) * perItem;
           if (n > 0) {
             countStack.push({ count: n, index: 0 });
@@ -86,19 +98,32 @@ export function itemEnd(b: Uint8Array, off: number): number {
       }
       case 6:
         current = h.next;
-        break;
+        continue;
       default:
         throw new Error('cbor: unknown major type');
     }
 
-    // Handle the stack
+    // Handle the stack for definite containers
     while (countStack.length > 0) {
       const top = countStack[countStack.length - 1]!;
-      top.index += 1;
-      if (top.index < top.count) {
+      if (top.isIndefinite) {
+        // Check for break marker in indefinite container
+        if (current >= b.length) throw new Error('cbor: missing break');
+        if (b[current] === 0xff) {
+          countStack.pop();
+          current += 1;
+          continue;
+        }
+        // Continue processing next item in indefinite container
         break;
+      } else {
+        // Definite container
+        top.index += 1;
+        if (top.index < top.count) {
+          break;
+        }
+        countStack.pop();
       }
-      countStack.pop();
     }
 
     if (countStack.length === 0) return current;

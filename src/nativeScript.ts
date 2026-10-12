@@ -32,6 +32,7 @@ function scriptAt(b: Uint8Array, startOff: number): NativeScript | null {
     itemOffsets?: number[];
     itemIndex?: number;
     subScripts?: NativeScript[];
+    n?: bigint;
   };
   const stack: Work[] = [{ phase: 'parse', off: startOff }];
   let result: NativeScript | null = null;
@@ -97,7 +98,7 @@ function scriptAt(b: Uint8Array, startOff: number): NativeScript | null {
           work.itemOffsets = offsets;
           work.itemIndex = 0;
           work.subScripts = [];
-          (work as any).n = n;
+          work.n = n;
           if (offsets.length === 0) {
             result = { type: 'nOfK', n, scripts: [] };
             stack.pop();
@@ -139,7 +140,7 @@ function scriptAt(b: Uint8Array, startOff: number): NativeScript | null {
         if (tag === 1n || tag === 2n) {
           result = { type: tag === 1n ? 'all' : 'any', scripts: work.subScripts! };
         } else if (tag === 3n) {
-          result = { type: 'nOfK', n: (work as any).n, scripts: work.subScripts! };
+          result = { type: 'nOfK', n: work.n!, scripts: work.subScripts! };
         }
         stack.pop();
         if (stack.length > 0) {
@@ -171,33 +172,160 @@ export function parseNativeScript(bytes: Uint8Array): NativeScript | null {
 
 // Spec A3: evaluated against the signer set and the validity interval. The
 // ledger does not run these scripts for a metadata-only transaction.
+// Uses explicit stack to avoid recursion depth limits with deeply nested scripts.
 export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean {
-  switch (s.type) {
-    case 'sig':
-      return ctx.signers.has(s.keyHash);
-    case 'all':
-      return s.scripts.every((c) => evaluateNativeScript(c, ctx));
-    case 'any':
-      return s.scripts.some((c) => evaluateNativeScript(c, ctx));
-    case 'nOfK': {
-      let ok = 0n;
-      for (const c of s.scripts) if (evaluateNativeScript(c, ctx)) ok += 1n;
-      return ok >= s.n;
+  type Work = {
+    phase: 'eval' | 'collect';
+    script: NativeScript;
+    childIndex?: number;
+    childResults?: boolean[];
+  };
+  const stack: Work[] = [{ phase: 'eval', script: s }];
+  let result = false;
+
+  while (stack.length > 0) {
+    const work = stack[stack.length - 1]!;
+
+    if (work.phase === 'eval') {
+      switch (work.script.type) {
+        case 'sig':
+          result = ctx.signers.has(work.script.keyHash);
+          stack.pop();
+          if (stack.length > 0) {
+            const parent = stack[stack.length - 1]!;
+            if (parent.phase === 'collect') {
+              parent.childResults![parent.childIndex!] = result;
+            }
+          }
+          break;
+        case 'all': {
+          const children = work.script.scripts;
+          if (children.length === 0) {
+            result = true;
+            stack.pop();
+            if (stack.length > 0) {
+              const parent = stack[stack.length - 1]!;
+              if (parent.phase === 'collect') {
+                parent.childResults![parent.childIndex!] = result;
+              }
+            }
+          } else {
+            work.phase = 'collect';
+            work.childIndex = 0;
+            work.childResults = [];
+            stack.push({ phase: 'eval', script: children[0]! });
+          }
+          break;
+        }
+        case 'any': {
+          const children = work.script.scripts;
+          if (children.length === 0) {
+            result = false;
+            stack.pop();
+            if (stack.length > 0) {
+              const parent = stack[stack.length - 1]!;
+              if (parent.phase === 'collect') {
+                parent.childResults![parent.childIndex!] = result;
+              }
+            }
+          } else {
+            work.phase = 'collect';
+            work.childIndex = 0;
+            work.childResults = [];
+            stack.push({ phase: 'eval', script: children[0]! });
+          }
+          break;
+        }
+        case 'nOfK': {
+          const children = work.script.scripts;
+          if (children.length === 0) {
+            result = 0n >= work.script.n;
+            stack.pop();
+            if (stack.length > 0) {
+              const parent = stack[stack.length - 1]!;
+              if (parent.phase === 'collect') {
+                parent.childResults![parent.childIndex!] = result;
+              }
+            }
+          } else {
+            work.phase = 'collect';
+            work.childIndex = 0;
+            work.childResults = [];
+            stack.push({ phase: 'eval', script: children[0]! });
+          }
+          break;
+        }
+        case 'after':
+          result = ctx.invalidBefore !== null && ctx.invalidBefore >= work.script.slot;
+          stack.pop();
+          if (stack.length > 0) {
+            const parent = stack[stack.length - 1]!;
+            if (parent.phase === 'collect') {
+              parent.childResults![parent.childIndex!] = result;
+            }
+          }
+          break;
+        case 'before':
+          result = ctx.invalidHereafter !== null && ctx.invalidHereafter <= work.script.slot;
+          stack.pop();
+          if (stack.length > 0) {
+            const parent = stack[stack.length - 1]!;
+            if (parent.phase === 'collect') {
+              parent.childResults![parent.childIndex!] = result;
+            }
+          }
+          break;
+      }
+    } else {
+      // collect phase - only 'all', 'any', 'nOfK' have scripts
+      const scriptType = work.script.type as 'all' | 'any' | 'nOfK';
+      const children = (work.script as any).scripts as NativeScript[];
+      const nextIndex = work.childIndex! + 1;
+
+      if (nextIndex >= children.length) {
+        // All children evaluated
+        if (scriptType === 'all') {
+          result = work.childResults!.every((r) => r);
+        } else if (scriptType === 'any') {
+          result = work.childResults!.some((r) => r);
+        } else if (scriptType === 'nOfK') {
+          let ok = 0n;
+          for (const r of work.childResults!) if (r) ok += 1n;
+          result = ok >= (work.script as any).n;
+        }
+        stack.pop();
+        if (stack.length > 0) {
+          const parent = stack[stack.length - 1]!;
+          if (parent.phase === 'collect') {
+            parent.childResults![parent.childIndex!] = result;
+          }
+        }
+      } else {
+        work.childIndex = nextIndex;
+        stack.push({ phase: 'eval', script: children[nextIndex]! });
+      }
     }
-    case 'after':
-      return ctx.invalidBefore !== null && ctx.invalidBefore >= s.slot;
-    case 'before':
-      return ctx.invalidHereafter !== null && ctx.invalidHereafter <= s.slot;
   }
+
+  return result;
 }
 
 export function collectKeyHashes(s: NativeScript): Hex[] {
   const out: Hex[] = [];
-  const walk = (x: NativeScript): void => {
-    if (x.type === 'sig') {
-      if (!out.includes(x.keyHash)) out.push(x.keyHash);
-    } else if (x.type === 'all' || x.type === 'any' || x.type === 'nOfK') x.scripts.forEach(walk);
-  };
-  walk(s);
+  const stack: NativeScript[] = [s];
+
+  while (stack.length > 0) {
+    const script = stack.pop()!;
+
+    if (script.type === 'sig') {
+      if (!out.includes(script.keyHash)) out.push(script.keyHash);
+    } else if (script.type === 'all' || script.type === 'any' || script.type === 'nOfK') {
+      // Push in reverse order so they process in forward order
+      for (let i = script.scripts.length - 1; i >= 0; i--) {
+        stack.push(script.scripts[i]!);
+      }
+    }
+  }
+
   return out;
 }

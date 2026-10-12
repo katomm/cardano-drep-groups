@@ -54,7 +54,21 @@ describe('parseNativeScript', () => {
   it('has no nesting limit', () => {
     const sigHex = `8200581c${'11'.repeat(28)}`;
     const bytes = hexToBytes(`${'820181'.repeat(2000)}${sigHex}`);
-    expect(parseNativeScript(bytes)).not.toBeNull();
+    const script = parseNativeScript(bytes);
+    expect(script).not.toBeNull();
+    expect(evaluateNativeScript(script!, ctx([K(0x11)]))).toBe(true);
+    expect(evaluateNativeScript(script!, ctx([]))).toBe(false);
+    expect(collectKeyHashes(script!)).toEqual([K(0x11)]);
+  });
+
+  it('handles 5000 levels of nesting', () => {
+    const sigHex = `8200581c${'11'.repeat(28)}`;
+    const bytes = hexToBytes(`${'820181'.repeat(5000)}${sigHex}`);
+    const script = parseNativeScript(bytes);
+    expect(script).not.toBeNull();
+    expect(evaluateNativeScript(script!, ctx([K(0x11)]))).toBe(true);
+    expect(evaluateNativeScript(script!, ctx([]))).toBe(false);
+    expect(collectKeyHashes(script!)).toEqual([K(0x11)]);
   });
 });
 

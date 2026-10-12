@@ -49,4 +49,30 @@ describe('cborSpan', () => {
     const b = hexToBytes('bf0102ff');
     expect(mapEntryOffsets(b, 0)).toEqual([[1, 2]]);
   });
+
+  it('itemEnd spans tagged items', () => {
+    // Tag 1, then int 1: should include both bytes
+    expect(itemEnd(hexToBytes('c101'), 0)).toBe(2);
+    // Tag 1, then array [1, 2]: should include tag + array
+    expect(itemEnd(hexToBytes('d90102820102'), 0)).toBe(6);
+    // Array [tag 1, int 1, int 2]: array contains tagged item
+    expect(itemEnd(hexToBytes('82c10102'), 0)).toBe(4);
+    // Array [tag 1, tag 1, int 1]: nested tags
+    expect(itemEnd(hexToBytes('81c1c101'), 0)).toBe(4);
+    // Array [tag 256, array [1, 2], int 3]: truncated to show tag is transparent
+    const b = hexToBytes('83d9010282010203');
+    expect(() => itemEnd(b, 0)).toThrow(); // truncated
+  });
+
+  it('handles 5000 levels of nested definite arrays', () => {
+    // Each level: 81 (array of 1) + content
+    const bytes = hexToBytes('81'.repeat(5000) + '00');
+    expect(itemEnd(bytes, 0)).toBe(bytes.length);
+  });
+
+  it('handles 5000 levels of nested indefinite arrays', () => {
+    // Each level: 9f (indefinite array) + content + ff (break)
+    const bytes = hexToBytes('9f'.repeat(5000) + '00' + 'ff'.repeat(5000));
+    expect(itemEnd(bytes, 0)).toBe(bytes.length);
+  });
 });
