@@ -1,6 +1,7 @@
 import { encode } from 'cborg';
 import { nativeScriptHash } from '../src/hash.js';
 import { hexToBytes } from '../src/hex.js';
+import type { ChainInput, Credential } from '../src/types.js';
 
 // Deterministic 28-byte key hashes and 32-byte tx hashes for readable tests.
 export const K = (n: number): string => n.toString(16).padStart(2, '0').repeat(28);
@@ -53,3 +54,29 @@ export function buildPayloadRaw(events: unknown[], entries: unknown[] = [], vers
   if (entries.length > 0) m.set(2, entries);
   return encode(m);
 }
+
+export function txIn(o: {
+  hash: string; h: number; i?: number; payload?: Uint8Array; rs?: string[]; wk?: string[];
+  valid?: boolean; ib?: bigint | null; ih?: bigint | null; ws?: Uint8Array[];
+}): ChainInput {
+  return {
+    kind: 'tx',
+    tx: {
+      txHash: o.hash, blockHeight: o.h, txIndex: o.i ?? 0, isValid: o.valid ?? true,
+      invalidBefore: o.ib ?? null, invalidHereafter: o.ih ?? null,
+      requiredSigners: o.rs ?? [], witnessKeyHashes: o.wk ?? [],
+      payload: o.payload, witnessScripts: o.ws ?? [],
+    },
+  };
+}
+
+export function regIn(cred: Credential, hash: string, h: number, i = 0, scripts?: Uint8Array[]): ChainInput {
+  return { kind: 'ledger', input: { kind: 'reg', credential: cred, txHash: hash, blockHeight: h, txIndex: i, certIndex: 0, witnessScripts: scripts } };
+}
+
+export function unregIn(cred: Credential, hash: string, h: number, i = 0): ChainInput {
+  return { kind: 'ledger', input: { kind: 'unreg', credential: cred, txHash: hash, blockHeight: h, txIndex: i, certIndex: 0 } };
+}
+
+export const keyCred = (hash: string): Credential => ({ kind: 'key', hash });
+export const scriptCred = (hash: string): Credential => ({ kind: 'script', hash });
