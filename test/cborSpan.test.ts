@@ -40,4 +40,13 @@ describe('cborSpan', () => {
     expect(() => itemEnd(hexToBytes('58030102'), 0)).toThrow();
     expect(() => itemEnd(hexToBytes('ff'), 0)).toThrow();
   });
+
+  it('rejects indefinite maps with odd number of items', () => {
+    expect(() => mapEntryOffsets(hexToBytes('bf01ff'), 0)).toThrow();
+  });
+
+  it('accepts indefinite maps with even number of items', () => {
+    const b = hexToBytes('bf0102ff');
+    expect(mapEntryOffsets(b, 0)).toEqual([[1, 2]]);
+  });
 });

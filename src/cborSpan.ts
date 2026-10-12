@@ -90,7 +90,10 @@ function collect(b: Uint8Array, off: number, major: number): number[] {
   if (h.indefinite) {
     for (;;) {
       if (p >= b.length) throw new Error('cbor: missing break');
-      if (b[p] === 0xff) return out;
+      if (b[p] === 0xff) {
+        if (major === 5 && out.length % 2 !== 0) throw new Error('cbor: odd map length');
+        return out;
+      }
       out.push(p);
       p = itemEnd(b, p);
     }
