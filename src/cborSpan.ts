@@ -38,8 +38,8 @@ function length(h: Head): number {
 
 export function itemEnd(b: Uint8Array, startOff: number): number {
   // Use an explicit stack to handle all CBOR structures iteratively
-  type StackEntry = { count: number; index: number; isIndefinite?: boolean; perItem?: number };
-  const countStack: StackEntry[] = [];
+  type StackEntry = { kind: 'definite' | 'indef-array' | 'indef-map' | 'indef-string'; count: number; index: number; itemCount?: number };
+  const stack: StackEntry[] = [];
   let current = startOff;
 
   for (;;) {
@@ -53,15 +53,25 @@ export function itemEnd(b: Uint8Array, startOff: number): number {
       case 2:
       case 3: {
         if (h.indefinite) {
-          // Process indefinite string/bytes by skipping to break
+          // Walk indefinite string chunks iteratively without recursion
           let p = h.next;
+          const stringMajor = h.major;
           for (;;) {
             if (p >= b.length) throw new Error('cbor: missing break');
             if (b[p] === 0xff) {
               current = p + 1;
               break;
             }
-            p = itemEnd(b, p);
+            // Read chunk header
+            const chunkHead = readHead(b, p);
+            // Chunk must be definite and same major type
+            if (chunkHead.major !== stringMajor || chunkHead.indefinite) {
+              throw new Error('cbor: indefinite string chunk must be definite same-major');
+            }
+            // Skip the chunk bytes
+            const chunkLen = length(chunkHead);
+            p = chunkHead.next + chunkLen;
+            if (p > b.length) throw new Error('cbor: unexpected end');
           }
         } else {
           const end = h.next + length(h);
@@ -81,14 +91,15 @@ export function itemEnd(b: Uint8Array, startOff: number): number {
             // Empty indefinite container
             current = p + 1;
           } else {
-            countStack.push({ count: -1, index: 0, isIndefinite: true, perItem });
+            const kind = h.major === 4 ? 'indef-array' : 'indef-map';
+            stack.push({ kind, count: perItem, index: 0, itemCount: 0 });
             current = p;
             continue;
           }
         } else {
           const n = length(h) * perItem;
           if (n > 0) {
-            countStack.push({ count: n, index: 0 });
+            stack.push({ kind: 'definite', count: n, index: 0 });
             current = h.next;
             continue;
           }
@@ -103,30 +114,60 @@ export function itemEnd(b: Uint8Array, startOff: number): number {
         throw new Error('cbor: unknown major type');
     }
 
-    // Handle the stack for definite containers
-    while (countStack.length > 0) {
-      const top = countStack[countStack.length - 1]!;
-      if (top.isIndefinite) {
-        // Check for break marker in indefinite container
-        if (current >= b.length) throw new Error('cbor: missing break');
-        if (b[current] === 0xff) {
-          countStack.pop();
-          current += 1;
-          continue;
-        }
-        // Continue processing next item in indefinite container
-        break;
-      } else {
-        // Definite container
+    // Handle the stack - first increment item count if in indef-map
+    if (stack.length > 0) {
+      const top = stack[stack.length - 1]!;
+      if (top.kind === 'indef-map') {
+        top.itemCount = (top.itemCount || 0) + 1;
+      }
+    }
+
+    // Then check for breaks and manage stack
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1]!;
+
+      if (top.kind === 'definite') {
         top.index += 1;
         if (top.index < top.count) {
           break;
         }
-        countStack.pop();
+        stack.pop();
+      } else if (top.kind === 'indef-array') {
+        // Check for break in indefinite array
+        if (current >= b.length) throw new Error('cbor: missing break');
+        if (b[current] === 0xff) {
+          stack.pop();
+          current += 1;
+          continue;
+        }
+        // Process next item in array
+        top.index += 1;
+        if (top.index >= top.count) {
+          top.index = 0;
+        } else {
+          break;
+        }
+      } else if (top.kind === 'indef-map') {
+        // Check for break in indefinite map
+        if (current >= b.length) throw new Error('cbor: missing break');
+        if (b[current] === 0xff) {
+          // Map must have even number of items (key/value pairs)
+          if ((top.itemCount || 0) % 2 !== 0) throw new Error('cbor: odd map length');
+          stack.pop();
+          current += 1;
+          continue;
+        }
+        // Process next key/value pair in map
+        top.index += 1;
+        if (top.index >= top.count) {
+          top.index = 0;
+        } else {
+          break;
+        }
       }
     }
 
-    if (countStack.length === 0) return current;
+    if (stack.length === 0) return current;
   }
 }
 

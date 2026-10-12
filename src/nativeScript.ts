@@ -179,6 +179,7 @@ export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean
     script: NativeScript;
     childIndex?: number;
     childResults?: boolean[];
+    children?: NativeScript[];
   };
   const stack: Work[] = [{ phase: 'eval', script: s }];
   let result = false;
@@ -199,8 +200,7 @@ export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean
           }
           break;
         case 'all': {
-          const children = work.script.scripts;
-          if (children.length === 0) {
+          if (work.script.scripts.length === 0) {
             result = true;
             stack.pop();
             if (stack.length > 0) {
@@ -213,13 +213,13 @@ export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean
             work.phase = 'collect';
             work.childIndex = 0;
             work.childResults = [];
-            stack.push({ phase: 'eval', script: children[0]! });
+            work.children = work.script.scripts;
+            stack.push({ phase: 'eval', script: work.children[0]! });
           }
           break;
         }
         case 'any': {
-          const children = work.script.scripts;
-          if (children.length === 0) {
+          if (work.script.scripts.length === 0) {
             result = false;
             stack.pop();
             if (stack.length > 0) {
@@ -232,13 +232,13 @@ export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean
             work.phase = 'collect';
             work.childIndex = 0;
             work.childResults = [];
-            stack.push({ phase: 'eval', script: children[0]! });
+            work.children = work.script.scripts;
+            stack.push({ phase: 'eval', script: work.children[0]! });
           }
           break;
         }
         case 'nOfK': {
-          const children = work.script.scripts;
-          if (children.length === 0) {
+          if (work.script.scripts.length === 0) {
             result = 0n >= work.script.n;
             stack.pop();
             if (stack.length > 0) {
@@ -251,7 +251,8 @@ export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean
             work.phase = 'collect';
             work.childIndex = 0;
             work.childResults = [];
-            stack.push({ phase: 'eval', script: children[0]! });
+            work.children = work.script.scripts;
+            stack.push({ phase: 'eval', script: work.children[0]! });
           }
           break;
         }
@@ -278,20 +279,20 @@ export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean
       }
     } else {
       // collect phase - only 'all', 'any', 'nOfK' have scripts
-      const scriptType = work.script.type as 'all' | 'any' | 'nOfK';
-      const children = (work.script as any).scripts as NativeScript[];
+      const children = work.children!;
       const nextIndex = work.childIndex! + 1;
 
       if (nextIndex >= children.length) {
         // All children evaluated
-        if (scriptType === 'all') {
+        if (work.script.type === 'all') {
           result = work.childResults!.every((r) => r);
-        } else if (scriptType === 'any') {
+        } else if (work.script.type === 'any') {
           result = work.childResults!.some((r) => r);
-        } else if (scriptType === 'nOfK') {
+        } else if (work.script.type === 'nOfK') {
           let ok = 0n;
           for (const r of work.childResults!) if (r) ok += 1n;
-          result = ok >= (work.script as any).n;
+          const nScript = work.script as any;
+          result = ok >= nScript.n;
         }
         stack.pop();
         if (stack.length > 0) {

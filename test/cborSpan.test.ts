@@ -75,4 +75,30 @@ describe('cborSpan', () => {
     const bytes = hexToBytes('9f'.repeat(5000) + '00' + 'ff'.repeat(5000));
     expect(itemEnd(bytes, 0)).toBe(bytes.length);
   });
+
+  it('requires complete key/value pairs in indefinite maps', () => {
+    // Indefinite map with odd number of items (only key, no value) must throw
+    expect(() => itemEnd(hexToBytes('bf01ff'), 0)).toThrow();
+    // Same in a nested array
+    expect(() => itemEnd(hexToBytes('81bf01ff'), 0)).toThrow();
+    // Valid indefinite map with complete key/value pair
+    expect(itemEnd(hexToBytes('bf0102ff'), 0)).toBe(4);
+  });
+
+  it('walks indefinite string chunks without recursion', () => {
+    // Indefinite byte string with two definite chunks
+    expect(itemEnd(hexToBytes('5f41014102ff'), 0)).toBe(6);
+    // Indefinite byte string with nested indefinite chunk must throw
+    expect(() => itemEnd(hexToBytes('5f5f4101ffff'), 0)).toThrow();
+    // Indefinite byte string with non-byte chunk (int) must throw
+    expect(() => itemEnd(hexToBytes('5f01ff'), 0)).toThrow();
+    // Indefinite text string with byte chunk must throw (major type mismatch)
+    expect(() => itemEnd(hexToBytes('7f4101ff'), 0)).toThrow();
+  });
+
+  it('handles 5000 levels of nested indefinite byte strings', () => {
+    // Build: 5f (indefinite byte string) + 40 (empty byte string chunk) repeated 5000 times + ff (break)
+    const bytes = hexToBytes('5f' + '40'.repeat(5000) + 'ff');
+    expect(itemEnd(bytes, 0)).toBe(bytes.length);
+  });
 });
