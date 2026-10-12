@@ -52,9 +52,9 @@ describe('parseNativeScript', () => {
     expect(parseNativeScript(trailing)).toBeNull();
   });
   it('has no nesting limit', () => {
-    let v: unknown[] = sig(K(1));
-    for (let i = 0; i < 2000; i++) v = allOf(v);
-    expect(parseNativeScript(scriptBytes(v))).not.toBeNull();
+    const sigHex = `8200581c${'11'.repeat(28)}`;
+    const bytes = hexToBytes(`${'820181'.repeat(2000)}${sigHex}`);
+    expect(parseNativeScript(bytes)).not.toBeNull();
   });
 });
 
