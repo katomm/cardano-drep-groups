@@ -46,32 +46,62 @@ function untilBreak(b: Uint8Array, off: number, perItem: number): number {
 }
 
 export function itemEnd(b: Uint8Array, off: number): number {
-  const h = readHead(b, off);
-  switch (h.major) {
-    case 0:
-    case 1:
-    case 7:
-      return h.next;
-    case 2:
-    case 3: {
-      if (h.indefinite) return untilBreak(b, h.next, 1);
-      const end = h.next + length(h);
-      if (end > b.length) throw new Error('cbor: unexpected end');
-      return end;
+  // Use an explicit stack to avoid recursion depth limits with deeply nested arrays/maps
+  type StackEntry = { count: number; index: number };
+  const countStack: StackEntry[] = [];
+  let current = off;
+
+  for (;;) {
+    const h = readHead(b, current);
+    switch (h.major) {
+      case 0:
+      case 1:
+      case 7:
+        current = h.next;
+        break;
+      case 2:
+      case 3: {
+        if (h.indefinite) current = untilBreak(b, h.next, 1);
+        else {
+          const end = h.next + length(h);
+          if (end > b.length) throw new Error('cbor: unexpected end');
+          current = end;
+        }
+        break;
+      }
+      case 4:
+      case 5: {
+        const perItem = h.major === 4 ? 1 : 2;
+        if (h.indefinite) current = untilBreak(b, h.next, perItem);
+        else {
+          const n = length(h) * perItem;
+          if (n > 0) {
+            countStack.push({ count: n, index: 0 });
+            current = h.next;
+            continue;
+          }
+          current = h.next;
+        }
+        break;
+      }
+      case 6:
+        current = h.next;
+        break;
+      default:
+        throw new Error('cbor: unknown major type');
     }
-    case 4:
-    case 5: {
-      const perItem = h.major === 4 ? 1 : 2;
-      if (h.indefinite) return untilBreak(b, h.next, perItem);
-      let p = h.next;
-      const n = length(h) * perItem;
-      for (let i = 0; i < n; i++) p = itemEnd(b, p);
-      return p;
+
+    // Handle the stack
+    while (countStack.length > 0) {
+      const top = countStack[countStack.length - 1]!;
+      top.index += 1;
+      if (top.index < top.count) {
+        break;
+      }
+      countStack.pop();
     }
-    case 6:
-      return itemEnd(b, h.next);
-    default:
-      throw new Error('cbor: unknown major type');
+
+    if (countStack.length === 0) return current;
   }
 }
 
