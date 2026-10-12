@@ -1,0 +1,17 @@
+{
+  "name": "drep-groups",
+  "version": "0.1.0",
+  "description": "Reference library for the DRep Groups CIP draft: codec, validation and state machine",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "vectors/vectors.json"],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "vectors": "UPDATE_VECTORS=1 vitest run test/vectors.test.ts"
+  },
+  "dependencies": { "@noble/hashes": "^2.3.0", "bech32": "^2.0.0", "cborg": "^6.1.2" },
+  "devDependencies": { "@types/node": "^26.4.1", "typescript": "^6.0.3", "vitest": "^4.1.10" }
+}
