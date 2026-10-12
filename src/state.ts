@@ -173,8 +173,53 @@ class Engine {
     return this.membership(e, self, ctx, required, at);
   }
 
-  membership(_e: GroupEvent, _self: EventRef, _ctx: EvalContext, _required: ReadonlySet<Hex>, _at: Position): string | null {
-    return 'not implemented';
+  membership(e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Position): string | null {
+    if (e.tag === 'join') {
+      const gref = this.resolve(e.group, self);
+      if (!gref) return 'local reference must point to an earlier event';
+      const g = this.groups.get(refKey(gref));
+      if (!g) return 'unknown group';
+      if (g.status === 'dissolved') return 'group dissolved';
+      const auth = this.memberAuthorized(e.member, ctx, required);
+      if (auth) return auth;
+      if (!this.registered.has(credKey(e.member))) return 'not a registered DRep';
+      const slot = `${refKey(g.id)}|${credKey(e.member)}`;
+      if (this.openByMember.has(slot)) return 'already a member or applicant';
+      this.instances.set(refKey(self), {
+        joinId: self, group: g.id, member: e.member,
+        state: g.mode === 'open' ? 'active' : 'pending', reason: null,
+        joinedAt: at, approvedAt: null, closedAt: null,
+      });
+      this.openByMember.set(slot, refKey(self));
+      return null;
+    }
+    if (e.tag !== 'approve' && e.tag !== 'leave' && e.tag !== 'remove') return 'unknown event';
+    const jref = this.resolve(e.join, self);
+    if (!jref) return 'local reference must point to an earlier event';
+    const inst = this.instances.get(refKey(jref));
+    if (!inst) return 'unknown join';
+    const g = this.groups.get(refKey(inst.group));
+    if (!g) return 'unknown group';
+    if (e.tag === 'leave') {
+      if (inst.state === 'closed') return 'join is not open';
+      const auth = this.memberAuthorized(inst.member, ctx, required);
+      if (auth) return auth;
+      this.close(inst, 'left', at);
+      return null;
+    }
+    if (g.mode === 'open') return e.tag === 'remove' ? 'open group has no remove' : 'open group has no approval';
+    if (e.tag === 'approve') {
+      if (inst.state !== 'pending') return 'join is not pending';
+      if (g.status === 'dissolved') return 'group dissolved';
+      if (!this.policy(g.admission, ctx)) return 'admission policy not satisfied';
+      inst.state = 'active';
+      inst.approvedAt = at;
+      return null;
+    }
+    if (inst.state === 'closed') return 'join is not open';
+    if (!this.policy(g.admission, ctx)) return 'admission policy not satisfied';
+    this.close(inst, 'removed', at);
+    return null;
   }
 
   result(): RegistryState {

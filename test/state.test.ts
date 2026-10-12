@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { orderInputs, replay } from '../src/state.js';
-import { buildPayload, ev, hashOf, K, kb, local, nOfK, ref, sig, T, txIn } from './helpers.js';
+import { allOf, buildPayload, ev, hashOf, K, kb, keyCred, local, nOfK, ref, regIn, scriptBytes, scriptCred, sig, T, txIn, unregIn } from './helpers.js';
 
 const ctrl = nOfK(2, sig(K(1)), sig(K(2)), sig(K(3)));
 const C = hashOf(ctrl);
@@ -91,5 +91,95 @@ describe('replay: groups', () => {
     expect(shuffled.groups).toEqual(once.groups);
     expect(shuffled.verdicts).toEqual(once.verdicts);
     expect(orderInputs([d, createTx(), d]).length).toBe(2);
+  });
+});
+
+const adm = nOfK(1, sig(K(1)), sig(K(2)));
+const A = hashOf(adm);
+const permCreate = txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(1, C, A)], [ctrl, adm]), rs: ALL });
+const openCreate = createTx();
+const M = K(0x50);
+const reg = regIn(keyCred(M), T(0x40), 5);
+const join = (o: { hash: string; h: number; i?: number; rs?: string[] }) =>
+  txIn({ hash: o.hash, h: o.h, i: o.i, payload: buildPayload([ev.join(ref(T(1), 0), 'key', M)]), rs: o.rs ?? [M] });
+const act = (kind: 'approve' | 'leave' | 'remove', joinHash: string, hash: string, h: number, rs: string[]) =>
+  txIn({ hash, h, payload: buildPayload([ev[kind](ref(joinHash, 0))]), rs });
+
+describe('replay: membership', () => {
+  it('open group: join is active at once, leave closes it', () => {
+    const s = replay([reg, openCreate, join({ hash: T(2), h: 11 }), act('leave', T(2), T(3), 12, [M])]);
+    expect(s.instances).toMatchObject([{ joinId: { txHash: T(2), index: 0 }, state: 'closed', reason: 'left' }]);
+  });
+
+  it('permissioned group: pending, approve, remove', () => {
+    const s = replay([reg, permCreate, join({ hash: T(2), h: 11 }), act('approve', T(2), T(3), 12, [K(2)]), act('remove', T(2), T(4), 13, [K(1)])]);
+    expect(s.verdicts.map((v) => v.reason)).toEqual([null, null, null, null]);
+    expect(s.instances[0]).toMatchObject({ state: 'closed', reason: 'removed' });
+    expect(s.instances[0]?.approvedAt?.txHash).toBe(T(3));
+  });
+
+  it('leave works while pending and needs no group signature', () => {
+    const s = replay([reg, permCreate, join({ hash: T(2), h: 11 }), act('leave', T(2), T(3), 12, [M])]);
+    expect(s.instances[0]).toMatchObject({ state: 'closed', reason: 'left' });
+  });
+
+  it('rejects a key member that only appears as a witness', () => {
+    const j = txIn({ hash: T(2), h: 11, payload: buildPayload([ev.join(ref(T(1), 0), 'key', M)]), wk: [M] });
+    expect(replay([reg, openCreate, j]).verdicts[1]?.reason).toBe('member key not in required_signers');
+  });
+
+  it('rejects join of an unregistered credential and a second open instance', () => {
+    expect(replay([openCreate, join({ hash: T(2), h: 11 })]).verdicts[1]?.reason).toBe('not a registered DRep');
+    const s = replay([reg, permCreate, join({ hash: T(2), h: 11 }), join({ hash: T(3), h: 12 })]);
+    expect(s.verdicts[2]?.reason).toBe('already a member or applicant');
+  });
+
+  it('rejects approve after leave, remove in an open group and approve without admission signatures', () => {
+    const left = replay([reg, permCreate, join({ hash: T(2), h: 11 }), act('leave', T(2), T(3), 12, [M]), act('approve', T(2), T(4), 13, [K(1)])]);
+    expect(left.verdicts[3]?.reason).toBe('join is not pending');
+    const open = replay([reg, openCreate, join({ hash: T(2), h: 11 }), act('remove', T(2), T(3), 12, ALL)]);
+    expect(open.verdicts[2]?.reason).toBe('open group has no remove');
+    const unsigned = replay([reg, permCreate, join({ hash: T(2), h: 11 }), act('approve', T(2), T(3), 12, [K(9)])]);
+    expect(unsigned.verdicts[2]?.reason).toBe('admission policy not satisfied');
+  });
+
+  it('dissolve closes instances and leave afterwards is rejected', () => {
+    const d = txIn({ hash: T(3), h: 12, payload: buildPayload([ev.dissolve(ref(T(1), 0), 0)]), rs: [K(1), K(2)] });
+    const s = replay([reg, openCreate, join({ hash: T(2), h: 11 }), d, act('leave', T(2), T(4), 13, [M])]);
+    expect(s.instances[0]).toMatchObject({ state: 'closed', reason: 'dissolved' });
+    expect(s.verdicts[3]?.reason).toBe('join is not open');
+  });
+
+  it('applies certificates before events of the same transaction', () => {
+    expect(replay([openCreate, regIn(keyCred(M), T(2), 11), join({ hash: T(2), h: 11 })]).verdicts[1]?.valid).toBe(true);
+    expect(replay([reg, openCreate, unregIn(keyCred(M), T(2), 11), join({ hash: T(2), h: 11 })]).verdicts[1]?.reason).toBe('not a registered DRep');
+  });
+
+  it('retirement closes instances for good, a new join opens a new one', () => {
+    const s = replay([
+      reg, openCreate, join({ hash: T(2), h: 11 }),
+      unregIn(keyCred(M), T(0x41), 12), regIn(keyCred(M), T(0x42), 13),
+      join({ hash: T(3), h: 14 }),
+    ]);
+    expect(s.instances.map((i) => [i.joinId.txHash, i.state, i.reason])).toEqual([[T(2), 'closed', 'retired'], [T(3), 'active', null]]);
+  });
+
+  it('retire then re-register then join inside one block', () => {
+    const s = replay([reg, openCreate, unregIn(keyCred(M), T(0x41), 20, 0), regIn(keyCred(M), T(0x42), 20, 1), join({ hash: T(2), h: 20, i: 2 })]);
+    expect(s.instances[0]?.state).toBe('active');
+  });
+
+  it('founder joins in the create transaction through a local ref', () => {
+    const p = buildPayload([ev.create(0, C, null), ev.join(local(0), 'key', M)], [ctrl]);
+    const s = replay([reg, txIn({ hash: T(1), h: 10, payload: p, rs: [...ALL, M] })]);
+    expect(s.instances[0]).toMatchObject({ group: { txHash: T(1), index: 0 }, state: 'active' });
+  });
+
+  it('script DRep member resolves from its registration witness set', () => {
+    const ms = allOf(sig(K(0x60)), sig(K(0x61)));
+    const SC = hashOf(ms);
+    const j = txIn({ hash: T(2), h: 11, payload: buildPayload([ev.join(ref(T(1), 0), 'script', SC)]), wk: [K(0x60), K(0x61)] });
+    expect(replay([regIn(scriptCred(SC), T(0x40), 5, 0, [scriptBytes(ms)]), openCreate, j]).verdicts[1]?.valid).toBe(true);
+    expect(replay([regIn(scriptCred(SC), T(0x40), 5), openCreate, j]).verdicts[1]?.reason).toBe('member script unresolved');
   });
 });
