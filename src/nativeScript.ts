@@ -291,8 +291,7 @@ export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean
         } else if (work.script.type === 'nOfK') {
           let ok = 0n;
           for (const r of work.childResults!) if (r) ok += 1n;
-          const nScript = work.script as any;
-          result = ok >= nScript.n;
+          result = ok >= work.script.n;
         }
         stack.pop();
         if (stack.length > 0) {

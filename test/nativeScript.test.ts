@@ -33,6 +33,10 @@ describe('parseNativeScript', () => {
     const b = hexToBytes(`82019f8200581c${'11'.repeat(28)}ff`);
     expect(parseNativeScript(b)).toEqual({ type: 'all', scripts: [{ type: 'sig', keyHash: K(0x11) }] });
   });
+  it('parses a sig script written as an indefinite array', () => {
+    const b = hexToBytes(`9f00581c${'11'.repeat(28)}ff`);
+    expect(parseNativeScript(b)).toEqual({ type: 'sig', keyHash: K(0x11) });
+  });
   it('accepts a negative n_of_k threshold like the ledger', () => {
     expect(parseNativeScript(encode([3, -1, []]))).toEqual({ type: 'nOfK', n: -1n, scripts: [] });
   });

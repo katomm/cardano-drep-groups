@@ -36,138 +36,92 @@ function length(h: Head): number {
   return Number(h.big);
 }
 
-export function itemEnd(b: Uint8Array, startOff: number): number {
-  // Use an explicit stack to handle all CBOR structures iteratively
-  type StackEntry = { kind: 'definite' | 'indef-array' | 'indef-map' | 'indef-string'; count: number; index: number; itemCount?: number };
-  const stack: StackEntry[] = [];
-  let current = startOff;
+// One open container while walking. A definite container counts down the
+// items it still needs (2n for a map of n pairs). An indefinite one counts the
+// items it has completed, so a map can reject a break after a dangling key.
+type Frame = { indefinite: false; remaining: number } | { indefinite: true; map: boolean; count: number };
 
+// Returns the offset just past the CBOR item at off. Walks with one explicit
+// stack, so nesting depth is limited only by memory. Every loop step either
+// consumes bytes or closes a container, so the walk always terminates.
+export function itemEnd(b: Uint8Array, off: number): number {
+  const stack: Frame[] = [];
+  let p = off;
   for (;;) {
-    const h = readHead(b, current);
-    switch (h.major) {
-      case 0:
-      case 1:
-      case 7:
-        current = h.next;
-        break;
-      case 2:
-      case 3: {
-        if (h.indefinite) {
-          // Walk indefinite string chunks iteratively without recursion
-          let p = h.next;
-          const stringMajor = h.major;
-          for (;;) {
-            if (p >= b.length) throw new Error('cbor: missing break');
-            if (b[p] === 0xff) {
-              current = p + 1;
-              break;
-            }
-            // Read chunk header
-            const chunkHead = readHead(b, p);
-            // Chunk must be definite and same major type
-            if (chunkHead.major !== stringMajor || chunkHead.indefinite) {
-              throw new Error('cbor: indefinite string chunk must be definite same-major');
-            }
-            // Skip the chunk bytes
-            const chunkLen = length(chunkHead);
-            p = chunkHead.next + chunkLen;
-            if (p > b.length) throw new Error('cbor: unexpected end');
-          }
-        } else {
-          const end = h.next + length(h);
-          if (end > b.length) throw new Error('cbor: unexpected end');
-          current = end;
-        }
-        break;
-      }
-      case 4:
-      case 5: {
-        const perItem = h.major === 4 ? 1 : 2;
-        if (h.indefinite) {
-          // Push indefinite container onto stack
-          let p = h.next;
-          if (p >= b.length) throw new Error('cbor: missing break');
-          if (b[p] === 0xff) {
-            // Empty indefinite container
-            current = p + 1;
+    const top = stack[stack.length - 1];
+    let done: boolean;
+    if (top?.indefinite && p >= b.length) throw new Error('cbor: missing break');
+    if (top?.indefinite && b[p] === 0xff) {
+      if (top.map && top.count % 2 !== 0) throw new Error('cbor: odd map length');
+      stack.pop();
+      p += 1;
+      done = true;
+    } else {
+      // Tags are transparent: skip them here, so that no break check falls
+      // between a tag and its content.
+      let h = readHead(b, p);
+      while (h.major === 6) h = readHead(b, h.next);
+      switch (h.major) {
+        case 0:
+        case 1:
+        case 7:
+          p = h.next;
+          done = true;
+          break;
+        case 2:
+        case 3:
+          p = h.indefinite ? stringChunksEnd(b, h.next, h.major) : definiteEnd(b, h);
+          done = true;
+          break;
+        case 4:
+        case 5:
+          p = h.next;
+          if (h.indefinite) {
+            stack.push({ indefinite: true, map: h.major === 5, count: 0 });
+            done = false;
           } else {
-            const kind = h.major === 4 ? 'indef-array' : 'indef-map';
-            stack.push({ kind, count: perItem, index: 0, itemCount: 0 });
-            current = p;
-            continue;
+            const remaining = length(h) * (h.major === 4 ? 1 : 2);
+            if (remaining > 0) stack.push({ indefinite: false, remaining });
+            done = remaining === 0;
           }
-        } else {
-          const n = length(h) * perItem;
-          if (n > 0) {
-            stack.push({ kind: 'definite', count: n, index: 0 });
-            current = h.next;
-            continue;
-          }
-          current = h.next;
-        }
+          break;
+        default:
+          throw new Error('cbor: unknown major type');
+      }
+    }
+    if (!done) continue;
+    // One item completed. Count it on its parent and close every definite
+    // container that this completes, each of them one item of its own parent.
+    for (;;) {
+      const parent = stack[stack.length - 1];
+      if (parent === undefined) return p;
+      if (parent.indefinite) {
+        parent.count += 1;
         break;
       }
-      case 6:
-        current = h.next;
-        continue;
-      default:
-        throw new Error('cbor: unknown major type');
+      parent.remaining -= 1;
+      if (parent.remaining > 0) break;
+      stack.pop();
     }
+  }
+}
 
-    // Handle the stack - first increment item count if in indef-map
-    if (stack.length > 0) {
-      const top = stack[stack.length - 1]!;
-      if (top.kind === 'indef-map') {
-        top.itemCount = (top.itemCount || 0) + 1;
-      }
-    }
+function definiteEnd(b: Uint8Array, h: Head): number {
+  const end = h.next + length(h);
+  if (end > b.length) throw new Error('cbor: unexpected end');
+  return end;
+}
 
-    // Then check for breaks and manage stack
-    while (stack.length > 0) {
-      const top = stack[stack.length - 1]!;
-
-      if (top.kind === 'definite') {
-        top.index += 1;
-        if (top.index < top.count) {
-          break;
-        }
-        stack.pop();
-      } else if (top.kind === 'indef-array') {
-        // Check for break in indefinite array
-        if (current >= b.length) throw new Error('cbor: missing break');
-        if (b[current] === 0xff) {
-          stack.pop();
-          current += 1;
-          continue;
-        }
-        // Process next item in array
-        top.index += 1;
-        if (top.index >= top.count) {
-          top.index = 0;
-        } else {
-          break;
-        }
-      } else if (top.kind === 'indef-map') {
-        // Check for break in indefinite map
-        if (current >= b.length) throw new Error('cbor: missing break');
-        if (b[current] === 0xff) {
-          // Map must have even number of items (key/value pairs)
-          if ((top.itemCount || 0) % 2 !== 0) throw new Error('cbor: odd map length');
-          stack.pop();
-          current += 1;
-          continue;
-        }
-        // Process next key/value pair in map
-        top.index += 1;
-        if (top.index >= top.count) {
-          top.index = 0;
-        } else {
-          break;
-        }
-      }
-    }
-
-    if (stack.length === 0) return current;
+// An indefinite byte or text string holds only definite chunks of its own
+// major type (RFC 8949), so its chunks are walked in a flat loop.
+function stringChunksEnd(b: Uint8Array, off: number, major: number): number {
+  let p = off;
+  for (;;) {
+    if (p >= b.length) throw new Error('cbor: missing break');
+    if (b[p] === 0xff) return p + 1;
+    const h = readHead(b, p);
+    if (h.major !== major || h.indefinite) throw new Error('cbor: bad indefinite string chunk');
+    p = definiteEnd(b, h);
   }
 }
 

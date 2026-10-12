@@ -101,4 +101,29 @@ describe('cborSpan', () => {
     const bytes = hexToBytes('5f' + '40'.repeat(5000) + 'ff');
     expect(itemEnd(bytes, 0)).toBe(bytes.length);
   });
+
+  it('walks indefinite arrays with several items', () => {
+    expect(itemEnd(hexToBytes('9f0000ff'), 0)).toBe(4);
+    expect(itemEnd(hexToBytes('9f8000ff'), 0)).toBe(4);
+  });
+
+  it('counts a container key or value as one item of an indefinite map', () => {
+    expect(itemEnd(hexToBytes('bf018100ff'), 0)).toBe(5);
+    expect(itemEnd(hexToBytes('bf019f00ffff'), 0)).toBe(6);
+    expect(itemEnd(hexToBytes('bf01a10203ff'), 0)).toBe(6);
+    expect(itemEnd(hexToBytes('bf01c18100ff'), 0)).toBe(6);
+    expect(itemEnd(hexToBytes('bf01bf0203ffff'), 0)).toBe(7);
+    expect(() => itemEnd(hexToBytes('bf01810000ff'), 0)).toThrow();
+    expect(() => itemEnd(hexToBytes('bf81000102ff'), 0)).toThrow();
+  });
+
+  it('rejects a break right after a tag', () => {
+    expect(() => itemEnd(hexToBytes('9fc1ff'), 0)).toThrow();
+    expect(() => itemEnd(hexToBytes('bf0102c1ff'), 0)).toThrow();
+  });
+
+  it('handles 20000 levels of nested indefinite maps', () => {
+    const bytes = hexToBytes(`${'bf00'.repeat(20000)}00${'ff'.repeat(20000)}`);
+    expect(itemEnd(bytes, 0)).toBe(60001);
+  });
 });
