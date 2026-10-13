@@ -54,6 +54,19 @@ const dupKeyPayload = concatBytes([
 ]);
 const retireChain = [reg, openCreate(), join(T(2), 11)];
 
+// Payload map {0: 1, 1: events, ...extra} built by hand, for bytes that
+// encoders refuse (duplicate keys) or cannot produce (very deep nesting).
+const rawPayload = (events: Uint8Array, extra: Uint8Array[] = [], pairs = 2 + extra.length / 2): Uint8Array =>
+  concatBytes([new Uint8Array([0xa0 + pairs]), encode(0), encode(1), encode(1), events, ...extra]);
+const rawArray = (items: Uint8Array[]): Uint8Array => concatBytes([new Uint8Array([0x80 + items.length]), ...items]);
+const deepValue = (() => {
+  const d = new Uint8Array(3000).fill(0x81); // 3000 nested arrays
+  d[2999] = 0x80;
+  return d;
+})();
+const scriptsEntry = [encode(2), encode([chunk64(scriptBytes(ctrl))])];
+const dupUpdateMap = concatBytes([hexToBytes('a2'), encode(0), encode(kb(C)), encode(0), encode(kb(C))]);
+
 export const VECTORS: VectorDef[] = [
   {
     name: 'open group: create, join, leave',
@@ -122,7 +135,7 @@ export const VECTORS: VectorDef[] = [
   },
   {
     name: 'certificates apply before events of the same transaction',
-    inputs: [openCreate(), regIn(keyCred(M), T(2), 11), join(T(2), 11), unregIn(keyCred(K(0x51)), T(3), 12), join(T(3), 12, K(0x51))],
+    inputs: [regIn(keyCred(K(0x51)), T(0x45), 6), openCreate(), regIn(keyCred(M), T(2), 11), join(T(2), 11), unregIn(keyCred(K(0x51)), T(3), 12), join(T(3), 12, K(0x51))],
     expect: { groups: [G(T(1))], instances: [I(T(2), 'active')], verdicts: [V(T(1), true), V(T(2), true), V(T(3), false, 'not a registered DRep')] },
   },
   {
@@ -256,6 +269,55 @@ export const VECTORS: VectorDef[] = [
         V(T(1), true, null, 5),
         V(T(1), false, 'join: bad shape', 6),
       ],
+    },
+  },
+  {
+    name: 'policy and consent satisfied by required_signers and witnesses together',
+    inputs: [txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(0, C, null)], [ctrl]), rs: [K(1)], wk: [K(2), K(3)] })],
+    expect: { groups: [G(T(1))], instances: [], verdicts: [V(T(1), true)] },
+  },
+  {
+    name: 'an unknown payload key with a deep value is ignored and the events count',
+    inputs: [
+      reg,
+      txIn({ hash: T(1), h: 10, rs: ALL, payload: rawPayload(encode([ev.create(0, C, null)]), [...scriptsEntry, encode(9), deepValue]) }),
+      join(T(2), 11),
+    ],
+    expect: { groups: [G(T(1))], instances: [I(T(2), 'active')], verdicts: [V(T(1), true), V(T(2), true)] },
+  },
+  {
+    name: 'an admission change on an open group is invalid',
+    inputs: [openCreate(), update(T(2), 11, 0, new Map([[1, kb(A)]]), ALL, [adm])],
+    expect: { groups: [G(T(1))], instances: [], verdicts: [V(T(1), true), V(T(2), false, 'open group has no admission policy')] },
+  },
+  {
+    name: 'a duplicate unknown key in the payload map ignores the whole payload',
+    inputs: [
+      reg,
+      txIn({ hash: T(1), h: 10, rs: ALL, payload: rawPayload(encode([ev.create(0, C, null)]), [...scriptsEntry, encode(9), encode(1), encode(9), encode(2)]) }),
+      join(T(2), 11),
+    ],
+    expect: { groups: [], instances: [], verdicts: [V(T(2), false, 'unknown group')] },
+  },
+  {
+    name: 'a duplicate key in an update map invalidates only that event',
+    inputs: [
+      txIn({
+        hash: T(1), h: 10, rs: ALL,
+        payload: rawPayload(
+          rawArray([
+            encode(ev.create(0, C, null)),
+            concatBytes([hexToBytes('84'), encode(1), encode(local(0)), encode(0), dupUpdateMap]),
+            encode(ev.update(local(0), 0, new Map())),
+          ]),
+          scriptsEntry,
+        ),
+      }),
+    ],
+    expect: {
+      groups: [G(T(1), { seq: '1' })],
+      instances: [],
+      verdicts: [V(T(1), true, null, 0), V(T(1), false, 'update: bad shape', 1), V(T(1), true, null, 2)],
     },
   },
   {
