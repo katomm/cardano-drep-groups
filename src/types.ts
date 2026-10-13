@@ -33,6 +33,7 @@ export interface ChainTx extends TxPosition {
   requiredSigners: Hex[];          // body field 14
   witnessKeyHashes: Hex[];         // blake2b-224 of each vkey in witness field 0
   payload: Uint8Array | undefined; // raw label 1695 metadatum bytes
+  payloadRepeated: boolean;        // label 1695 appears more than once, payload is then undefined
   witnessScripts: Uint8Array[];    // raw bytes of witness field 1 native scripts
 }
 // Only certificates of transactions with is_valid = true may be passed in.
@@ -57,7 +58,7 @@ export interface Instance {
   joinedAt: Position; approvedAt: Position | null; closedAt: Position | null;
 }
 export interface EventVerdict { ref: EventRef; tag: GroupEvent['tag'] | null; valid: boolean; reason: string | null }
-export interface IgnoredTx { txHash: Hex; reason: 'phase-2 invalid' | 'payload rejected' }
+export interface IgnoredTx { txHash: Hex; reason: 'phase-2 invalid' | 'payload rejected' | 'label repeated' }
 export interface RegistryState {
   groups: GroupState[];
   instances: Instance[];

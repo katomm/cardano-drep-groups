@@ -20,11 +20,31 @@ describe('decodePayload layer 1', () => {
     const m = new Map<number, unknown>([[0, 1], [1, [create]], [9, 'x']]);
     expect(decodePayload(encode(m))?.events[0]?.ok).toBe(true);
   });
-  it('rejects a payload with a duplicate map key or a tag', () => {
+  it('rejects a payload with a duplicate payload map key', () => {
     const dup = concatBytes([hexToBytes('a3'), encode(0), encode(1), encode(1), encode([create]), encode(1), encode([create])]);
     expect(decodePayload(dup)).toBeNull();
+    // An unknown key twice is a duplicate as well, also in non-minimal form.
+    const dupUnknown = concatBytes([hexToBytes('a4'), encode(0), encode(1), encode(1), encode([create]), encode(9), encode(1), hexToBytes('1809'), encode(2)]);
+    expect(decodePayload(dupUnknown)).toBeNull();
+  });
+  it('treats a tag where the events array belongs as a layer 1 shape error', () => {
     const tagged = concatBytes([hexToBytes('a2'), encode(0), encode(1), encode(1), hexToBytes('c1'), encode([create])]);
     expect(decodePayload(tagged)).toBeNull();
+  });
+  it('ignores a deep value under an unknown key without inspecting it', () => {
+    const deep = new Uint8Array(3000).fill(0x81);
+    deep[2999] = 0x80;
+    const p = decodePayload(concatBytes([hexToBytes('a3'), encode(0), encode(1), encode(1), encode([create]), encode(9), deep]));
+    expect(p?.events.map((e) => e.ok)).toEqual([true]);
+  });
+  it('ignores tags, duplicate keys and text keys inside unknown keys', () => {
+    const inner = concatBytes([hexToBytes('a2'), encode(1), hexToBytes('c1'), encode(5), encode(1), encode(6)]);
+    const p = decodePayload(concatBytes([hexToBytes('a4'), encode(0), encode(1), encode(1), encode([create]), encode(9), inner, encode('x'), encode(1)]));
+    expect(p?.events.map((e) => e.ok)).toEqual([true]);
+  });
+  it('rejects trailing bytes and malformed CBOR', () => {
+    expect(decodePayload(concatBytes([buildPayload([create]), hexToBytes('00')]))).toBeNull();
+    expect(decodePayload(buildPayload([create]).subarray(0, 10))).toBeNull();
   });
 });
 
@@ -84,6 +104,35 @@ describe('decodePayload layer 3', () => {
       ]),
     );
     expect(p?.events.every((e) => !e.ok)).toBe(true);
+  });
+  it('invalidates only the event whose update map repeats a key', () => {
+    const h = encode(new Uint8Array(28).fill(7));
+    const dupMap = concatBytes([hexToBytes('a2'), encode(0), h, encode(0), h]);
+    const dupUpdate = concatBytes([hexToBytes('84'), encode(1), encode(ref(T(1), 0)), encode(0), dupMap]);
+    const events = concatBytes([hexToBytes('83'), encode(create), dupUpdate, encode(ev.update(ref(T(1), 0), 0, new Map()))]);
+    const p = decodePayload(concatBytes([hexToBytes('a2'), encode(0), encode(1), encode(1), events]));
+    expect(p?.events.map((e) => (e.ok ? e.event.tag : e.reason))).toEqual(['create', 'update: bad shape', 'update']);
+  });
+  it('invalidates an event whose url chunk is not valid UTF-8', () => {
+    const badText = hexToBytes('62c328'); // text of 2 bytes, 0xc3 0x28 is not UTF-8
+    const anchor = concatBytes([hexToBytes('82'), hexToBytes('81'), badText, encode(new Uint8Array(32))]);
+    const badCreate = concatBytes([hexToBytes('85'), encode(0), encode(0), encode(new Uint8Array(28)), encode([]), anchor]);
+    const events = concatBytes([hexToBytes('82'), badCreate, encode(create)]);
+    const p = decodePayload(concatBytes([hexToBytes('a2'), encode(0), encode(1), encode(1), events]));
+    expect(p?.events.map((e) => (e.ok ? e.event.tag : e.reason))).toEqual(['create: bad profile anchor', 'create']);
+  });
+  it('rejects floats, tags and indefinite byte strings at interpreted positions', () => {
+    const tagged = concatBytes([hexToBytes('82'), encode(5), hexToBytes('c1'), encode([0])]);
+    const float = concatBytes([hexToBytes('83'), encode(2), encode(ref(T(1), 0)), hexToBytes('f93c00')]); // seq 1.0
+    const indef = concatBytes([hexToBytes('83'), encode(3), encode(local(0)), hexToBytes('8200'), hexToBytes('5f'), encode(new Uint8Array(28)), hexToBytes('ff')]);
+    const events = concatBytes([hexToBytes('84'), encode(create), tagged, float, indef]);
+    const p = decodePayload(concatBytes([hexToBytes('a2'), encode(0), encode(1), encode(1), events]));
+    expect(p?.events.map((e) => (e.ok ? e.event.tag : e.reason))).toEqual(['create', 'bad join reference', 'dissolve: bad shape', 'join: bad shape']);
+  });
+  it('accepts indefinite arrays and maps', () => {
+    const events = concatBytes([hexToBytes('9f'), encode(create), hexToBytes('ff')]);
+    const p = decodePayload(concatBytes([hexToBytes('bf'), encode(0), encode(1), encode(1), events, hexToBytes('ff')]));
+    expect(p?.events.map((e) => e.ok)).toEqual([true]);
   });
   it('rejects an update map with an unknown key', () => {
     const p = decodePayload(buildPayload([ev.update(ref(T(1), 0), 0, new Map<number, unknown>([[7, 1]]))]));

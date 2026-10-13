@@ -46,6 +46,41 @@ describe('decodeTransaction', () => {
     const raw = concatBytes([hexToBytes('84'), encode(new Map()), encode(new Map()), encode(true), md]);
     expect(decodeTransaction(raw, pos).payload).toBeUndefined();
   });
+  it('flags a repeated label', () => {
+    const md = concatBytes([hexToBytes('a2'), encode(1695), payload, encode(1695), payload]);
+    const raw = concatBytes([hexToBytes('84'), encode(new Map()), encode(new Map()), encode(true), md]);
+    expect(decodeTransaction(raw, pos).payloadRepeated).toBe(true);
+    expect(decodeTransaction(tx({ aux: new Map([[1695, payloadValue]]) }), pos).payloadRepeated).toBe(false);
+  });
+  it('does not overflow on a deep value under another label', () => {
+    // 3000 nested arrays under label 674, built by hand since encoders overflow at that depth
+    const deep = new Uint8Array(3000).fill(0x81);
+    deep[2999] = 0x80;
+    const md = concatBytes([hexToBytes('a2'), encode(674), deep, encode(1695), payload]);
+    const aux = concatBytes([hexToBytes('d90103'), hexToBytes('a1'), encode(0), md]);
+    const body = encode(new Map<number, unknown>([[14, new Tagged(258, [hexToBytes(K(7))])]]));
+    const raw = concatBytes([hexToBytes('84'), body, encode(new Map()), encode(true), aux]);
+    const t = decodeTransaction(raw, pos);
+    expect(bytesToHex(t.payload as Uint8Array)).toBe(bytesToHex(payload));
+    expect(t.requiredSigners).toEqual([K(7)]);
+  });
+  it('reads an indefinite-length metadata map', () => {
+    const md = concatBytes([hexToBytes('bf'), encode(674), encode('hi'), encode(1695), payload, hexToBytes('ff')]);
+    const raw = concatBytes([hexToBytes('84'), encode(new Map()), encode(new Map()), encode(true), md]);
+    expect(bytesToHex(decodeTransaction(raw, pos).payload as Uint8Array)).toBe(bytesToHex(payload));
+  });
+  it('reads required_signers with and without the set tag', () => {
+    const withBody = (signers: unknown) => encode([new Map<number, unknown>([[14, signers]]), new Map(), true, null]);
+    expect(decodeTransaction(withBody(new Tagged(258, [hexToBytes(K(7)), hexToBytes(K(8))])), pos).requiredSigners).toEqual([K(7), K(8)]);
+    expect(decodeTransaction(withBody([hexToBytes(K(7)), hexToBytes(K(8))]), pos).requiredSigners).toEqual([K(7), K(8)]);
+  });
+  it('reads unwrapped vkey witnesses and keeps uint64 validity bounds', () => {
+    const raw = encode([new Map<number, unknown>([[3, 2n ** 64n - 1n]]), new Map([[0, [[vkey, new Uint8Array(64)]]]]), true, null]);
+    const t = decodeTransaction(raw, pos);
+    expect(t.witnessKeyHashes).toEqual([keyHashOfVkey(vkey)]);
+    expect(t.invalidHereafter).toBe(2n ** 64n - 1n);
+    expect(t.invalidBefore).toBeNull();
+  });
   it('keeps is_valid false', () => {
     expect(decodeTransaction(tx({ valid: false }), pos).isValid).toBe(false);
   });
@@ -56,6 +91,9 @@ describe('decodeTransaction', () => {
   });
   it('throws on bytes that are not a transaction', () => {
     expect(() => decodeTransaction(encode([1, 2]), pos)).toThrow();
+    expect(() => decodeTransaction(encode([new Map(), new Map(), 1, null]), pos)).toThrow();
+    expect(() => decodeTransaction(concatBytes([tx(), hexToBytes('00')]), pos)).toThrow();
+    expect(() => decodeTransaction(tx().subarray(0, 20), pos)).toThrow();
   });
   it('decodes a real mainnet Conway transaction', () => {
     const hex = readFileSync(new URL('./fixtures-survey-tx.hex', import.meta.url), 'utf8').trim();

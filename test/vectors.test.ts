@@ -46,6 +46,7 @@ function fromJson(inputs: any[]): ChainInput[] {
             invalidHereafter: x.invalidHereafter === null ? null : BigInt(x.invalidHereafter),
             requiredSigners: x.requiredSigners, witnessKeyHashes: x.witnessKeyHashes,
             payload: x.payloadHex === null ? undefined : hexToBytes(x.payloadHex),
+            payloadRepeated: false,
             witnessScripts: x.witnessScriptsHex.map(hexToBytes),
           },
         }

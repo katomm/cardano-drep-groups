@@ -57,7 +57,7 @@ export function buildPayloadRaw(events: unknown[], entries: unknown[] = [], vers
 
 export function txIn(o: {
   hash: string; h: number; i?: number; payload?: Uint8Array; rs?: string[]; wk?: string[];
-  valid?: boolean; ib?: bigint | null; ih?: bigint | null; ws?: Uint8Array[];
+  valid?: boolean; ib?: bigint | null; ih?: bigint | null; ws?: Uint8Array[]; repeated?: boolean;
 }): ChainInput {
   return {
     kind: 'tx',
@@ -65,7 +65,7 @@ export function txIn(o: {
       txHash: o.hash, blockHeight: o.h, txIndex: o.i ?? 0, isValid: o.valid ?? true,
       invalidBefore: o.ib ?? null, invalidHereafter: o.ih ?? null,
       requiredSigners: o.rs ?? [], witnessKeyHashes: o.wk ?? [],
-      payload: o.payload, witnessScripts: o.ws ?? [],
+      payload: o.payload, payloadRepeated: o.repeated ?? false, witnessScripts: o.ws ?? [],
     },
   };
 }

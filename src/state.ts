@@ -61,9 +61,13 @@ class Engine {
   }
 
   tx(t: ChainTx): void {
-    if (t.payload === undefined) return;
+    if (t.payload === undefined && !t.payloadRepeated) return;
     if (!t.isValid) {
       this.ignored.push({ txHash: t.txHash, reason: 'phase-2 invalid' });
+      return;
+    }
+    if (t.payloadRepeated || t.payload === undefined) {
+      this.ignored.push({ txHash: t.txHash, reason: 'label repeated' });
       return;
     }
     const p = decodePayload(t.payload);

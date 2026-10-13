@@ -39,11 +39,19 @@ describe('replay: groups', () => {
   it('ignores phase-2-invalid transactions and wrong versions and records why', () => {
     const invalid = txIn({ hash: T(1), h: 10, valid: false, payload: buildPayload([ev.create(0, C, null)], [ctrl]), rs: ALL });
     const v2 = txIn({ hash: T(2), h: 11, payload: buildPayload([ev.create(0, C, null)], [ctrl], 2), rs: ALL });
-    const s = replay([invalid, v2]);
+    const repeated = txIn({ hash: T(3), h: 12, repeated: true, rs: ALL });
+    const repeatedInvalid = txIn({ hash: T(4), h: 13, repeated: true, valid: false, rs: ALL });
+    const none = txIn({ hash: T(5), h: 14, rs: ALL });
+    const s = replay([invalid, v2, repeated, repeatedInvalid, none]);
     expect(s.groups).toEqual([]);
     expect(s.verdicts).toEqual([]);
     expect(s.scripts.size).toBe(0);
-    expect(s.ignored).toEqual([{ txHash: T(1), reason: 'phase-2 invalid' }, { txHash: T(2), reason: 'payload rejected' }]);
+    expect(s.ignored).toEqual([
+      { txHash: T(1), reason: 'phase-2 invalid' },
+      { txHash: T(2), reason: 'payload rejected' },
+      { txHash: T(3), reason: 'label repeated' },
+      { txHash: T(4), reason: 'phase-2 invalid' },
+    ]);
   });
 
   it('needs consent of newly listed keys on update, not of removed ones', () => {
