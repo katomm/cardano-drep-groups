@@ -2,6 +2,10 @@
 
 All notable changes to this package. Versions follow [semantic versioning](https://semver.org). While the CIP is a draft, minor versions may contain breaking changes.
 
+## Unreleased
+
+- `parseNativeScript` reads the bytes in one linear pass. Deeply nested scripts parsed in time quadratic in their depth before, so a crafted script of 5000 levels cost seconds of CPU.
+
 ## 0.1.0 (2026-10-15)
 
 First version of the reference library for the DRep Groups CIP draft.
