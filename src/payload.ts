@@ -4,7 +4,7 @@ import { bytesToHex, concatBytes } from './hex.js';
 import { parseNativeScript } from './nativeScript.js';
 import type { Anchor, Credential, DecodedEvent, DecodedPayload, GroupEvent, PublishedScript, RefLike, UpdateChanges } from './types.js';
 
-export const GROUPS_LABEL = 1695;
+export const GROUPS_LABEL = 8416;
 const MAX_CHUNK = 64n;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
@@ -193,7 +193,7 @@ function keyId(b: Uint8Array, off: number): string {
   return n !== null ? `u${n}` : `x${bytesToHex(b.subarray(off, itemEnd(b, off)))}`;
 }
 
-// Spec A2 decoding layers over the raw label 1695 metadatum bytes, read by
+// Spec A2 decoding layers over the raw label 8416 metadatum bytes, read by
 // span with an explicit stack, so no nesting depth can exhaust the call stack.
 // A duplicate key in the payload map ignores the whole payload. Values of
 // unknown payload keys are skipped by span and never inspected.
