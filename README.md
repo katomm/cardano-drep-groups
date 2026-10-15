@@ -6,7 +6,7 @@ A group publishes its rules in transaction metadata under label `8416`. DReps jo
 
 This package holds the rules in code: it decodes the metadata, checks every signature against the group's policies and replays the chain into groups and memberships. Pure TypeScript, no network access, no platform dependency.
 
-> **Status: draft.** The CIP is not submitted yet, metadata label `8416` will be registered in CIP-10 together with it, and the API can still change. The package is not published to npm.
+> **Status: draft.** The CIP is not submitted yet, metadata label `8416` will be registered in CIP-10 together with it, and the API can still change.
 
 ## What a group can do
 
@@ -43,10 +43,8 @@ The rules this library enforces, in short:
 
 ## Install
 
-Until the package is published, install it from the repository. The package builds itself on install.
-
 ```sh
-npm install github:katomm/cardano-drep-groups
+npm install drep-groups
 ```
 
 ESM only.
