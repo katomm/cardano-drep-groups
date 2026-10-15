@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { itemEnd } from '../src/cborSpan.js';
 import { bytesToHex } from '../src/hex.js';
 
-// Recursive reference walker: the itemEnd of commit 7584e59 with one ruling
-// applied. An indefinite byte or text string accepts only definite chunks of
+// Recursive reference walker: a straightforward recursive itemEnd with the
+// RFC 8949 string rule applied. An indefinite byte or text string accepts only definite chunks of
 // the same major type (RFC 8949). It recurses on data depth, so it is only
 // run on the bounded inputs generated below.
 interface Head {
@@ -46,7 +46,7 @@ function untilBreak(b: Uint8Array, off: number, perItem: number): number {
   }
 }
 
-// The ruling: chunks must be definite strings of the same major type.
+// RFC 8949: chunks must be definite strings of the same major type.
 function stringChunks(b: Uint8Array, off: number, major: number): number {
   let p = off;
   for (;;) {
