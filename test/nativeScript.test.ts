@@ -74,6 +74,30 @@ describe('parseNativeScript', () => {
     expect(evaluateNativeScript(script!, ctx([]))).toBe(false);
     expect(collectKeyHashes(script!)).toEqual([K(0x11)]);
   });
+
+  // A crafted script at the transaction size limit reaches about 5000 levels,
+  // so parsing must stay linear in the input size.
+  it.each([5000, 10000])('parses %i levels in linear time', (depth) => {
+    const sigHex = `8200581c${'11'.repeat(28)}`;
+    const deep = hexToBytes(`${'820181'.repeat(depth)}${sigHex}`);
+    const deepIndefinite = hexToBytes(`${'9f019f'.repeat(depth)}${sigHex}${'ffff'.repeat(depth)}`);
+    const start = performance.now();
+    const a = parseNativeScript(deep);
+    const b = parseNativeScript(deepIndefinite);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(500);
+    // Walk both results by hand, a deep equality matcher would recurse.
+    let x = a;
+    let y = b;
+    for (let i = 0; i < depth; i++) {
+      expect(x?.type === 'all' && x.scripts.length === 1).toBe(true);
+      expect(y?.type === 'all' && y.scripts.length === 1).toBe(true);
+      x = x?.type === 'all' ? x.scripts[0]! : null;
+      y = y?.type === 'all' ? y.scripts[0]! : null;
+    }
+    expect(x).toEqual({ type: 'sig', keyHash: K(0x11) });
+    expect(y).toEqual({ type: 'sig', keyHash: K(0x11) });
+  });
 });
 
 describe('evaluateNativeScript', () => {

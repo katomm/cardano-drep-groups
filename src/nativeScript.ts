@@ -1,4 +1,4 @@
-import { arrayItemOffsets, itemEnd, readHead } from './cborSpan.js';
+import { readHead } from './cborSpan.js';
 import { bytesToHex } from './hex.js';
 import type { EvalContext, Hex, NativeScript } from './types.js';
 
@@ -13,158 +13,112 @@ export function asUint(v: unknown): bigint | null {
   return null;
 }
 
-// Reads a CBOR integer at off by its major type: 0 is unsigned, 1 is negative.
-function intAt(b: Uint8Array, off: number): bigint | null {
-  const h = readHead(b, off);
-  if (h.major === 0) return h.big;
-  if (h.major === 1) return -1n - h.big;
-  return null;
-}
+// One composite script (all, any or n_of_k) whose child list is still open.
+type ListFrame = {
+  tag: 1n | 2n | 3n;
+  n: bigint;
+  scriptIndefinite: boolean; // the script array itself, closed by a break
+  listIndefinite: boolean; // the child list, closed by a break
+  expected: number; // child count of a definite list
+  scripts: NativeScript[];
+};
 
 // Spec A2: native script grammar of the Conway CDDL with exact major types.
-// Uses explicit stack to avoid recursion depth limits with deeply nested scripts.
-function scriptAt(b: Uint8Array, startOff: number): NativeScript | null {
-  type Work = {
-    phase: 'parse' | 'gather_subs';
-    off: number;
-    tag?: bigint;
-    items?: number[];
-    itemOffsets?: number[];
-    itemIndex?: number;
-    subScripts?: NativeScript[];
-    n?: bigint;
-  };
-  const stack: Work[] = [{ phase: 'parse', off: startOff }];
-  let result: NativeScript | null = null;
+// One forward pass over the bytes reads every head exactly once, so the work
+// is linear in the input size. Open child lists live on an explicit stack, so
+// nesting depth is limited only by memory. Returns null on anything that is
+// not exactly one well-formed script using all bytes, and may throw on
+// truncated input (the caller turns that into null).
+function parseScript(b: Uint8Array): NativeScript | null {
+  const stack: ListFrame[] = [];
+  let p = 0;
+  for (;;) {
+    // A script starts at p.
+    const h = readHead(b, p);
+    if (h.major !== 4) return null;
+    const scriptIndefinite = h.indefinite;
+    p = h.next;
+    if (scriptIndefinite && b[p] === 0xff) return null; // empty script array
+    const th = readHead(b, p);
+    if (th.major !== 0) return null;
+    const tag = th.big;
+    p = th.next;
+    if (tag > 5n) return null;
+    if (!scriptIndefinite && h.big !== (tag === 3n ? 3n : 2n)) return null;
 
-  while (stack.length > 0) {
-    const work = stack[stack.length - 1]!;
-
-    if (work.phase === 'parse') {
-      if (readHead(b, work.off).major !== 4) return null;
-      const items = arrayItemOffsets(b, work.off);
-      const [t] = items;
-      if (t === undefined || readHead(b, t).major !== 0) return null;
-      work.tag = readHead(b, t).big;
-      if ((work.tag <= 2n || work.tag >= 4n) && items.length !== 2) return null;
-      if (work.tag === 3n && items.length !== 3) return null;
-      work.items = items;
-
-      const tag = work.tag;
-      const [, a1, a2] = items;
-
-      switch (tag) {
-        case 0n: {
-          const h = readHead(b, a1 as number);
-          if (h.major !== 2 || h.indefinite || h.big !== 28n) return null;
-          result = { type: 'sig', keyHash: bytesToHex(b.subarray(h.next, h.next + 28)) };
-          stack.pop();
-          if (stack.length > 0 && result) {
-            const parent = stack[stack.length - 1]!;
-            if (parent.phase === 'gather_subs') {
-              parent.subScripts!.push(result);
-            }
-          }
-          break;
-        }
-        case 1n:
-        case 2n: {
-          if (readHead(b, a1 as number).major !== 4) return null;
-          const offsets = arrayItemOffsets(b, a1 as number);
-          work.phase = 'gather_subs';
-          work.itemOffsets = offsets;
-          work.itemIndex = 0;
-          work.subScripts = [];
-          if (offsets.length === 0) {
-            result = { type: tag === 1n ? 'all' : 'any', scripts: [] };
-            stack.pop();
-            if (stack.length > 0) {
-              const parent = stack[stack.length - 1]!;
-              if (parent.phase === 'gather_subs') {
-                parent.subScripts!.push(result!);
-              }
-            }
-          } else {
-            stack.push({ phase: 'parse', off: offsets[0]! });
-          }
-          break;
-        }
-        case 3n: {
-          const n = intAt(b, a1 as number);
-          if (n === null || n < INT64_MIN || n > INT64_MAX) return null;
-          if (readHead(b, a2 as number).major !== 4) return null;
-          const offsets = arrayItemOffsets(b, a2 as number);
-          work.phase = 'gather_subs';
-          work.itemOffsets = offsets;
-          work.itemIndex = 0;
-          work.subScripts = [];
-          work.n = n;
-          if (offsets.length === 0) {
-            result = { type: 'nOfK', n, scripts: [] };
-            stack.pop();
-            if (stack.length > 0) {
-              const parent = stack[stack.length - 1]!;
-              if (parent.phase === 'gather_subs') {
-                parent.subScripts!.push(result);
-              }
-            }
-          } else {
-            stack.push({ phase: 'parse', off: offsets[0]! });
-          }
-          break;
-        }
-        case 4n:
-        case 5n: {
-          const h = readHead(b, a1 as number);
-          if (h.major !== 0) return null;
-          result = { type: tag === 4n ? 'after' : 'before', slot: h.big };
-          stack.pop();
-          if (stack.length > 0 && result) {
-            const parent = stack[stack.length - 1]!;
-            if (parent.phase === 'gather_subs') {
-              parent.subScripts!.push(result);
-            }
-          }
-          break;
-        }
-        default:
-          return null;
-      }
+    let done: NativeScript | null = null;
+    let doneIndefinite = scriptIndefinite;
+    if (tag === 0n) {
+      const kh = readHead(b, p);
+      if (kh.major !== 2 || kh.indefinite || kh.big !== 28n) return null;
+      if (kh.next + 28 > b.length) return null;
+      done = { type: 'sig', keyHash: bytesToHex(b.subarray(kh.next, kh.next + 28)) };
+      p = kh.next + 28;
+    } else if (tag === 4n || tag === 5n) {
+      const sh = readHead(b, p);
+      if (sh.major !== 0) return null;
+      done = { type: tag === 4n ? 'after' : 'before', slot: sh.big };
+      p = sh.next;
     } else {
-      // gather_subs phase
-      const offsets = work.itemOffsets!;
-      const index = work.itemIndex!;
-      if (index + 1 >= offsets.length) {
-        // All subs gathered
-        const tag = work.tag!;
-        if (tag === 1n || tag === 2n) {
-          result = { type: tag === 1n ? 'all' : 'any', scripts: work.subScripts! };
-        } else if (tag === 3n) {
-          result = { type: 'nOfK', n: work.n!, scripts: work.subScripts! };
-        }
-        stack.pop();
-        if (stack.length > 0) {
-          const parent = stack[stack.length - 1]!;
-          if (parent.phase === 'gather_subs') {
-            parent.subScripts!.push(result!);
-          }
-        }
-      } else {
-        work.itemIndex = index + 1;
-        stack.push({ phase: 'parse', off: offsets[index + 1]! });
+      let n = 0n;
+      if (tag === 3n) {
+        const nh = readHead(b, p);
+        if (nh.major === 0) n = nh.big;
+        else if (nh.major === 1) n = -1n - nh.big;
+        else return null;
+        if (n < INT64_MIN || n > INT64_MAX) return null;
+        p = nh.next;
       }
+      const lh = readHead(b, p);
+      if (lh.major !== 4) return null;
+      p = lh.next;
+      // Every child takes at least one byte, so a longer list cannot fit.
+      if (!lh.indefinite && lh.big > BigInt(b.length - p)) return null;
+      stack.push({
+        tag: tag as 1n | 2n | 3n,
+        n,
+        scriptIndefinite,
+        listIndefinite: lh.indefinite,
+        expected: Number(lh.big),
+        scripts: [],
+      });
+    }
+
+    // Close every script and child list that is complete at p, innermost
+    // first, then either return the root or go on with the next child.
+    for (;;) {
+      if (done !== null) {
+        if (doneIndefinite) {
+          if (b[p] !== 0xff) return null; // more items than the arity allows
+          p += 1;
+        }
+        const parent = stack[stack.length - 1];
+        if (parent === undefined) return p === b.length ? done : null;
+        parent.scripts.push(done);
+        done = null;
+      }
+      const top = stack[stack.length - 1];
+      if (top === undefined) return null;
+      if (top.listIndefinite) {
+        if (p >= b.length) return null;
+        if (b[p] !== 0xff) break; // next child
+        p += 1;
+      } else if (top.scripts.length < top.expected) break; // next child
+      stack.pop();
+      done =
+        top.tag === 3n
+          ? { type: 'nOfK', n: top.n, scripts: top.scripts }
+          : { type: top.tag === 1n ? 'all' : 'any', scripts: top.scripts };
+      doneIndefinite = top.scriptIndefinite;
     }
   }
-
-  return result;
 }
 
 // Parses native script bytes. Returns null on anything that is not exactly one
 // well-formed native script using all bytes.
 export function parseNativeScript(bytes: Uint8Array): NativeScript | null {
   try {
-    if (itemEnd(bytes, 0) !== bytes.length) return null;
-    return scriptAt(bytes, 0);
+    return parseScript(bytes);
   } catch {
     return null;
   }
