@@ -136,3 +136,12 @@ Expected results in `vectors/definitions.ts` are written by hand from the specif
 ## License
 
 [Apache-2.0](LICENSE)
+
+## Releasing
+
+Releases are tag driven and staged:
+
+1. Bump the version in a pull request with `npm version <patch|minor> --no-git-tag-version` and add a changelog entry.
+2. After the squash merge, tag the merge commit `v<version>` and push the tag.
+3. The release workflow checks the tag against `package.json` and `main`, runs the tests and stages the package on npm with provenance.
+4. A maintainer approves the staged version on npmjs.com with 2FA. The workflow also creates the GitHub release.
