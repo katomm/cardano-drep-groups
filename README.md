@@ -2,11 +2,11 @@
 
 Reference implementation of **DRep Groups**, a draft Cardano standard for recording which DReps belong to which group, party or council, directly on chain.
 
-A group publishes its rules in transaction metadata under label `1695`. DReps join and leave with their own signatures. Any indexer that follows the standard computes the same membership list from the chain alone, without trusting a website or a database.
+A group publishes its rules in transaction metadata under label `8416`. DReps join and leave with their own signatures. Any indexer that follows the standard computes the same membership list from the chain alone, without trusting a website or a database.
 
 This package holds the rules in code: it decodes the metadata, checks every signature against the group's policies and replays the chain into groups and memberships. Pure TypeScript, no network access, no platform dependency.
 
-> **Status: draft.** The CIP is not submitted yet, metadata label `1695` is provisional and the API can still change. The package is not published to npm.
+> **Status: draft.** The CIP is not submitted yet, metadata label `8416` will be registered in CIP-10 together with it, and the API can still change. The package is not published to npm.
 
 ## What a group can do
 
@@ -56,7 +56,7 @@ ESM only.
 ```ts
 import { decodeTransaction, replay, type ChainInput } from 'drep-groups';
 
-// 1. Every transaction with metadata label 1695, as full CBOR plus its position in the chain
+// 1. Every transaction with metadata label 8416, as full CBOR plus its position in the chain
 const tx = decodeTransaction(cborBytes, { txHash, blockHeight, txIndex });
 
 // 2. DRep registrations and retirements of every credential that appears in a join
@@ -80,7 +80,7 @@ state.ignored;   // transactions whose payload did not count, and why
 
 Any chain source works. With the public Koios API the inputs come from three calls:
 
-- `GET /tx_by_metalabel?_label=1695&_after_block_height=<cursor>` lists new transactions with the label.
+- `GET /tx_by_metalabel?_label=8416&_after_block_height=<cursor>` lists new transactions with the label.
 - `POST /tx_cbor` with `{"_tx_hashes": [...]}` returns their full CBOR.
 - `POST /tx_info` with the same hashes returns `tx_block_index`, the position inside the block.
 
@@ -90,7 +90,7 @@ DRep registrations and retirements come from `GET /drep_updates`, the position o
 
 | Function | Purpose |
 |---|---|
-| `decodeTransaction(cbor, position)` | full Conway transaction to a `ChainTx` (signers, validity interval, raw label 1695 payload, witness scripts) |
+| `decodeTransaction(cbor, position)` | full Conway transaction to a `ChainTx` (signers, validity interval, raw label 8416 payload, witness scripts) |
 | `replay(inputs)` | chain inputs to a `RegistryState` |
 | `decodePayload(bytes)` | one payload to its events and published scripts, `null` when the payload is ignored |
 | `parseNativeScript(bytes)`, `evaluateNativeScript(script, ctx)`, `collectKeyHashes(script)` | native scripts with exact CBOR types and ledger semantics |
