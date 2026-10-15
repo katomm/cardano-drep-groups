@@ -16,8 +16,8 @@ describe('hex', () => {
 });
 
 describe('hash', () => {
-  // Reference values computed on 2026-10-12 with @evolution-sdk/evolution
-  // ScriptHash.fromScript and with blakejs, both from DRepTalk's node_modules.
+  // Reference values computed with @evolution-sdk/evolution ScriptHash.fromScript
+  // and with blakejs.
   it('hashes a sig native script like the ledger', () => {
     const sig = hexToBytes(`8200581c${'11'.repeat(28)}`);
     expect(nativeScriptHash(sig)).toBe('5334c8c55ec6518f2e262da617d3170bf0722f43813d64dbaf0ff0b9');
