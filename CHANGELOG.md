@@ -2,7 +2,7 @@
 
 All notable changes to this package. Versions follow [semantic versioning](https://semver.org). While the CIP is a draft, minor versions may contain breaking changes.
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-15)
 
 First version of the reference library for the DRep Groups CIP draft.
 
