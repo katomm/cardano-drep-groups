@@ -58,7 +58,7 @@ function metadataOffset(cbor: Uint8Array, auxOff: number): number | null {
   return null;
 }
 
-// Raw bytes of the label 1695 value, undefined when absent or present twice.
+// Raw bytes of the label 8416 value, undefined when absent or present twice.
 function labelPayload(cbor: Uint8Array, auxOff: number): { payload: Uint8Array | undefined; repeated: boolean } {
   const md = metadataOffset(cbor, auxOff);
   if (md === null || readHead(cbor, md).major !== 5) return { payload: undefined, repeated: false };
