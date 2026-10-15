@@ -19,7 +19,8 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "vectors": "UPDATE_VECTORS=1 vitest run test/vectors.test.ts"
+    "vectors": "UPDATE_VECTORS=1 vitest run test/vectors.test.ts",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@noble/hashes": "^2.3.0",
