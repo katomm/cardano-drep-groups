@@ -34,7 +34,8 @@
   },
   "files": [
     "dist",
-    "vectors/vectors.json"
+    "vectors/vectors.json",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
