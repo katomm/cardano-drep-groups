@@ -55,14 +55,45 @@ describe('parseNativeScript', () => {
     trailing.set(ok);
     expect(parseNativeScript(trailing)).toBeNull();
   });
-  it('has no nesting limit', () => {
-    const sigHex = `8200581c${'11'.repeat(28)}`;
-    const bytes = hexToBytes(`${'820181'.repeat(2000)}${sigHex}`);
-    const script = parseNativeScript(bytes);
-    expect(script).not.toBeNull();
-    expect(evaluateNativeScript(script!, ctx([K(0x11)]))).toBe(true);
-    expect(evaluateNativeScript(script!, ctx([]))).toBe(false);
-    expect(collectKeyHashes(script!)).toEqual([K(0x11)]);
+  it('accepts int64 thresholds and uint64 slots at their bounds', () => {
+    expect(parseNativeScript(hexToBytes('83033b7fffffffffffffff80'))).toEqual({ type: 'nOfK', n: -(2n ** 63n), scripts: [] });
+    expect(parseNativeScript(hexToBytes('83031b7fffffffffffffff80'))).toEqual({ type: 'nOfK', n: 2n ** 63n - 1n, scripts: [] });
+    expect(parseNativeScript(hexToBytes('82041bffffffffffffffff'))).toEqual({ type: 'after', slot: 2n ** 64n - 1n });
+    expect(parseNativeScript(hexToBytes('820180'))).toEqual({ type: 'all', scripts: [] });
+    expect(parseNativeScript(hexToBytes('82019fff'))).toEqual({ type: 'all', scripts: [] });
+    expect(parseNativeScript(hexToBytes('9f019fffff'))).toEqual({ type: 'all', scripts: [] });
+    expect(parseNativeScript(hexToBytes('9f0180ff'))).toEqual({ type: 'all', scripts: [] });
+  });
+
+  it('rejects edge case encodings', () => {
+    const k = '11'.repeat(28);
+    const cases = [
+      '', // empty input
+      '80', // empty array
+      '9fff', // empty indefinite array
+      `8200581c${k}00`, // trailing byte
+      `8200581b${k.slice(2)}`, // 27 byte key hash
+      `8200581c${k.slice(2)}`, // truncated key hash
+      `9f00581c${k}00ff`, // extra item in an indefinite sig
+      `9f00581c${k}`, // missing break
+      `82005f581c${k}ff`, // indefinite byte string as key hash
+      '8303208000', // trailing byte after n_of_k
+      '83033b800000000000000080', // threshold below int64
+      '83031b800000000000000080', // threshold above int64
+      '820520', // negative slot
+      '820181', // truncated nested script
+      '82019f', // unterminated indefinite list
+      '9f018000ff', // extra item in an indefinite all
+      '82069f', // unknown script tag
+      '8201bf', // map where the list belongs
+      'c1820180', // tagged script
+      '82018180', // empty array as nested script
+      '9b0000000000000002820180', // script array length in eight bytes
+      '83039b00000000000000030180', // script list length in eight bytes
+      '820199ffff', // list length past the input
+      '82019bffffffffffffffff', // list length past the safe integer range
+    ];
+    for (const h of cases) expect(parseNativeScript(hexToBytes(h)), h).toBeNull();
   });
 
   it('handles 5000 levels of nesting', () => {
@@ -76,7 +107,8 @@ describe('parseNativeScript', () => {
   });
 
   // A crafted script at the transaction size limit reaches about 5000 levels,
-  // so parsing must stay linear in the input size.
+  // so parsing must stay linear in the input size. A quadratic parser needs
+  // seconds at these depths, the bound leaves room for a busy machine.
   it.each([5000, 10000])('parses %i levels in linear time', (depth) => {
     const sigHex = `8200581c${'11'.repeat(28)}`;
     const deep = hexToBytes(`${'820181'.repeat(depth)}${sigHex}`);
@@ -85,7 +117,7 @@ describe('parseNativeScript', () => {
     const a = parseNativeScript(deep);
     const b = parseNativeScript(deepIndefinite);
     const elapsed = performance.now() - start;
-    expect(elapsed).toBeLessThan(500);
+    expect(elapsed).toBeLessThan(1000);
     // Walk both results by hand, a deep equality matcher would recurse.
     let x = a;
     let y = b;

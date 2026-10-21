@@ -64,18 +64,6 @@ describe('cborSpan', () => {
     expect(() => itemEnd(b, 0)).toThrow(); // truncated
   });
 
-  it('handles 5000 levels of nested definite arrays', () => {
-    // Each level: 81 (array of 1) + content
-    const bytes = hexToBytes('81'.repeat(5000) + '00');
-    expect(itemEnd(bytes, 0)).toBe(bytes.length);
-  });
-
-  it('handles 5000 levels of nested indefinite arrays', () => {
-    // Each level: 9f (indefinite array) + content + ff (break)
-    const bytes = hexToBytes('9f'.repeat(5000) + '00' + 'ff'.repeat(5000));
-    expect(itemEnd(bytes, 0)).toBe(bytes.length);
-  });
-
   it('requires complete key/value pairs in indefinite maps', () => {
     // Indefinite map with odd number of items (only key, no value) must throw
     expect(() => itemEnd(hexToBytes('bf01ff'), 0)).toThrow();
@@ -94,12 +82,6 @@ describe('cborSpan', () => {
     expect(() => itemEnd(hexToBytes('5f01ff'), 0)).toThrow();
     // Indefinite text string with byte chunk must throw (major type mismatch)
     expect(() => itemEnd(hexToBytes('7f4101ff'), 0)).toThrow();
-  });
-
-  it('handles 5000 levels of nested indefinite byte strings', () => {
-    // Build: 5f (indefinite byte string) + 40 (empty byte string chunk) repeated 5000 times + ff (break)
-    const bytes = hexToBytes('5f' + '40'.repeat(5000) + 'ff');
-    expect(itemEnd(bytes, 0)).toBe(bytes.length);
   });
 
   it('walks indefinite arrays with several items', () => {
@@ -122,8 +104,15 @@ describe('cborSpan', () => {
     expect(() => itemEnd(hexToBytes('bf0102c1ff'), 0)).toThrow();
   });
 
-  it('handles 20000 levels of nested indefinite maps', () => {
-    const bytes = hexToBytes(`${'bf00'.repeat(20000)}00${'ff'.repeat(20000)}`);
-    expect(itemEnd(bytes, 0)).toBe(60001);
+  // Deep inputs must not overflow the stack: 81 is a definite array of one,
+  // 9f and bf open indefinite arrays and maps, 5f an indefinite byte string of empty chunks.
+  it.each([
+    ['definite arrays 20000 deep', '81'.repeat(20000) + '00'],
+    ['indefinite arrays 20000 deep', '9f'.repeat(20000) + '00' + 'ff'.repeat(20000)],
+    ['indefinite maps 20000 deep', `${'bf00'.repeat(20000)}00${'ff'.repeat(20000)}`],
+    ['an indefinite byte string of 20000 chunks', '5f' + '40'.repeat(20000) + 'ff'],
+  ])('walks %s', (_, hex) => {
+    const bytes = hexToBytes(hex);
+    expect(itemEnd(bytes, 0)).toBe(bytes.length);
   });
 });
