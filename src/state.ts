@@ -1,10 +1,14 @@
 import { nativeScriptHash } from './hash.js';
 import { collectKeyHashes, evaluateNativeScript, parseNativeScript } from './nativeScript.js';
 import { decodePayload } from './payload.js';
+import { posOfCert, posOfEvent } from './position.js';
 import type {
   ChainInput, ChainTx, Credential, EvalContext, EventRef, EventVerdict, GroupEvent, GroupState,
   Hex, IgnoredTx, Instance, InstanceReason, LedgerInput, NativeScript, Position, RefLike, RegistryState,
 } from './types.js';
+
+// Group and subject of an event verdict, filled while the event is checked.
+interface Attribution { group: EventRef | null; subject: Credential | null }
 
 export const refKey = (r: EventRef): string => `${r.txHash}#${r.index}`;
 export const credKey = (c: Credential): string => `${c.kind}:${c.hash}`;
@@ -42,7 +46,7 @@ class Engine {
 
   ledger(l: LedgerInput): void {
     const ck = credKey(l.credential);
-    const at: Position = { txHash: l.txHash, blockHeight: l.blockHeight, txIndex: l.txIndex };
+    const at = posOfCert(l);
     if (l.kind === 'reg') {
       this.registered.add(ck);
       if (l.credential.kind === 'script') {
@@ -82,15 +86,16 @@ class Engine {
       invalidHereafter: t.invalidHereafter,
     };
     const required = new Set(t.requiredSigners);
-    const at: Position = { txHash: t.txHash, blockHeight: t.blockHeight, txIndex: t.txIndex };
     p.events.forEach((d, index) => {
       const ref: EventRef = { txHash: t.txHash, index };
+      const at = posOfEvent(t, index);
       if (!d.ok) {
-        this.verdicts.push({ ref, tag: null, valid: false, reason: d.reason });
+        this.verdicts.push({ ref, tag: null, valid: false, reason: d.reason, at, group: null, subject: null });
         return;
       }
-      const reason = this.event(d.event, ref, ctx, required, at);
-      this.verdicts.push({ ref, tag: d.event.tag, valid: reason === null, reason });
+      const attr: Attribution = { group: null, subject: null };
+      const reason = this.event(d.event, ref, ctx, required, at, attr);
+      this.verdicts.push({ ref, tag: d.event.tag, valid: reason === null, reason, at, ...attr });
     });
   }
 
@@ -127,7 +132,7 @@ class Engine {
     this.openByMember.delete(`${refKey(inst.group)}|${credKey(inst.member)}`);
   }
 
-  event(e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Position): string | null {
+  event(e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Position, attr: Attribution): string | null {
     if (e.tag === 'create') {
       if (!this.scripts.has(e.control)) return 'control policy unresolved';
       if (e.admission !== null && !this.scripts.has(e.admission)) return 'admission policy unresolved';
@@ -138,6 +143,7 @@ class Engine {
         id: self, mode: e.mode, control: e.control, admission: e.admission, profile: e.profile,
         seq: 0n, status: 'active', createdAt: at, profileSetAt: e.profile ? at : null,
       });
+      attr.group = self;
       return null;
     }
     if (e.tag === 'update' || e.tag === 'dissolve') {
@@ -145,6 +151,7 @@ class Engine {
       if (!gref) return 'local reference must point to an earlier event';
       const g = this.groups.get(refKey(gref));
       if (!g) return 'unknown group';
+      attr.group = g.id;
       if (g.status === 'dissolved') return 'group dissolved';
       if (e.seq !== g.seq) return 'stale seq';
       if (!this.policy(g.control, ctx)) return 'control policy not satisfied';
@@ -174,15 +181,17 @@ class Engine {
       g.seq += 1n;
       return null;
     }
-    return this.membership(e, self, ctx, required, at);
+    return this.membership(e, self, ctx, required, at, attr);
   }
 
-  membership(e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Position): string | null {
+  membership(e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Position, attr: Attribution): string | null {
     if (e.tag === 'join') {
+      attr.subject = e.member;
       const gref = this.resolve(e.group, self);
       if (!gref) return 'local reference must point to an earlier event';
       const g = this.groups.get(refKey(gref));
       if (!g) return 'unknown group';
+      attr.group = g.id;
       if (g.status === 'dissolved') return 'group dissolved';
       const auth = this.memberAuthorized(e.member, ctx, required);
       if (auth) return auth;
@@ -202,6 +211,8 @@ class Engine {
     if (!jref) return 'local reference must point to an earlier event';
     const inst = this.instances.get(refKey(jref));
     if (!inst) return 'unknown join';
+    attr.group = inst.group;
+    attr.subject = inst.member;
     const g = this.groups.get(refKey(inst.group));
     if (!g) return 'unknown group';
     if (e.tag === 'leave') {
