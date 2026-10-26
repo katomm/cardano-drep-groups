@@ -84,6 +84,23 @@ Any chain source works. With the public Koios API the inputs come from three cal
 
 DRep registrations and retirements come from `GET /drep_updates`, the position of each certificate again from `tx_info`.
 
+## Incremental indexing
+
+`replay` recomputes everything from all inputs. An indexer with a database can instead call `runEngine` after every sync: it applies only the new label transactions and credential inputs to your `Store`, in steps bounded by a budget, and recovers after rollbacks. `MemoryStore` is a complete in-memory implementation. A store of your own can run the contract checks of `drep-groups/conformance` (`runSchedule` with seeded chains), which compare the engine against `replay`.
+
+```ts
+import { MemoryStore, runEngine } from 'drep-groups';
+
+const store = new MemoryStore();
+store.ingestLabelTx(tx);                // chain inputs go in through the store
+const lease = store.acquireLease('indexer');
+const budget = { controlTxs: 50, controlBytes: 200_000, credentialUnits: 50, credentialInputs: 500, truncateRows: 1000, resetRows: 1000 };
+
+let report;
+do report = await runEngine(store, budget, lease);
+while (report.more);
+```
+
 ## API
 
 | Function | Purpose |
