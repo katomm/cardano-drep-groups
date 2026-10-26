@@ -6,6 +6,7 @@ import type { EngineSnapshot } from '../engine/memoryStore.js';
 import { runEngine } from '../engine/run.js';
 import { type Budget, LeaseLostError, type RunReport, type Store } from '../engine/types.js';
 import { bytesToHex } from '../hex.js';
+import { decodePayload } from '../payload.js';
 import { comparePos, endOf, minPos, type Pos, posOfCert } from '../position.js';
 import type { StoredInstance } from '../rules.js';
 import { credKey, refKey, replay } from '../state.js';
@@ -150,11 +151,26 @@ export function engineProjection(s: EngineSnapshot): DisplayProjection {
   };
 }
 
+function duplicateKeys<T>(xs: readonly T[], key: (x: T) => string): string[] {
+  const seen = new Set<string>();
+  const dup = new Set<string>();
+  for (const x of xs) {
+    const k = key(x);
+    if (seen.has(k)) dup.add(k);
+    seen.add(k);
+  }
+  return [...dup];
+}
+
 // Differences of two keyed lists, at most `limit` lines.
 function diffKeyed<T>(name: string, a: T[], b: T[], key: (x: T) => string, limit: number): string[] {
+  const out: string[] = [];
+  // A row twice under one key is a difference of its own, a map would hide it.
+  for (const [side, xs] of [['engine', a], ['reference', b]] as const) {
+    for (const k of duplicateKeys(xs, key)) if (out.length < limit) out.push(`${name} ${k}: more than once in ${side}`);
+  }
   const left = new Map(a.map((x) => [key(x), canon(x)] as const));
   const right = new Map(b.map((x) => [key(x), canon(x)] as const));
-  const out: string[] = [];
   for (const [k, v] of left) {
     if (out.length >= limit) break;
     const w = right.get(k);
@@ -232,6 +248,8 @@ function checkQueue(s: EngineSnapshot): void {
 // Fields once set change only through a truncation or a reset: verdicts stay, an instance
 // keeps its join fields and a set approval or close.
 function checkMonotone(before: EngineSnapshot, after: EngineSnapshot): void {
+  for (const k of duplicateKeys(after.verdicts, (v) => refKey(v.ref))) throw new ConformanceError(`verdict ${k} stored more than once`);
+  for (const k of duplicateKeys(after.instances, (i) => refKey(i.joinId))) throw new ConformanceError(`instance ${k} stored more than once`);
   const verdicts = new Map(after.verdicts.map((v) => [refKey(v.ref), canon(v)] as const));
   for (const v of before.verdicts) {
     if (verdicts.get(refKey(v.ref)) !== canon(v)) throw new ConformanceError(`applied verdict ${refKey(v.ref)} changed without a truncation`);
@@ -249,6 +267,14 @@ function checkMonotone(before: EngineSnapshot, after: EngineSnapshot): void {
 
 const sameState = (a: unknown, b: unknown): boolean => canon(a) === canon(b);
 
+// The marker rule: txs the library ignores and txs without a readable event or script
+// are kept by hash only, they never change state.
+function isMarker(tx: ChainTx): boolean {
+  if (!tx.isValid || tx.payloadRepeated || tx.payload === undefined) return true;
+  const d = decodePayload(tx.payload);
+  return d === null || (d.scripts.length === 0 && !d.events.some((e) => e.ok));
+}
+
 class Driver {
   private lease = '';
   private readonly owner = 'conformance';
@@ -260,10 +286,17 @@ class Driver {
   private episode: { before: EngineSnapshot; kinds: Set<string>; above: number | null } | null = null;
   private rolledBack = false;
   private gBehind = false;
+  private stepIndex = 0;
+  lastDeliver = -1;                          // index of the schedule's last deliver step
+  private readonly results = new Set<string>(); // distinct (ref, valid, reason) results
   readonly cov = emptyCoverage();
   readonly checkpoints: ScheduleResult['checkpoints'] = [];
 
   constructor(private readonly store: DriverStore) {}
+
+  setStep(i: number): void {
+    this.stepIndex = i;
+  }
 
   async start(): Promise<void> {
     this.lease = await this.store.acquireLease(this.owner);
@@ -289,9 +322,13 @@ class Driver {
     for (const x of inputs) {
       const before = canon(await this.store.pendingRecovery());
       const r = x.kind === 'tx' ? await this.store.ingestLabelTx(x.tx) : await this.store.ingestLedgerRow(x.input);
+      if (x.kind === 'tx' && r !== 'duplicate' && (r === 'marker') !== isMarker(x.tx)) {
+        throw new ConformanceError(`label tx ${x.tx.txHash} ingested as ${r}, the marker rule says ${isMarker(x.tx) ? 'marker' : 'stored'}`);
+      }
       // A row already stored under its key is no input and opens nothing.
-      if (r === 'duplicate' && canon(await this.store.pendingRecovery()) !== before) {
-        throw new ConformanceError(`a duplicate ${inputKey(x)} opened a recovery`);
+      // A marker cannot change state either, so it opens nothing even when it is late.
+      if ((r === 'duplicate' || r === 'marker') && canon(await this.store.pendingRecovery()) !== before) {
+        throw new ConformanceError(`a ${r} ${inputKey(x)} opened a recovery`);
       }
       if (reference) this.ref.set(inputKey(x), x);
     }
@@ -311,15 +348,44 @@ class Driver {
 
   async setComplete(c: Credential, complete: boolean): Promise<void> {
     this.flags.set(credKey(c), { c, complete });
-    if (complete && this.rolledBack) this.cov.completedAfterRollback++;
+    // Late completion after a rollback, while the schedule still delivers inputs.
+    if (complete && this.rolledBack && this.stepIndex < this.lastDeliver) this.cov.completedAfterRollback++;
     await this.store.setComplete(c, complete);
   }
 
-  private observe = (r: { valid: boolean; reason: string | null }): void => {
-    this.cov.results++;
-    if (r.valid) this.cov.valid++;
-    if (r.reason !== null) this.cov.reasons[r.reason] = (this.cov.reasons[r.reason] ?? 0) + 1;
+  // Results are counted once per (ref, valid, reason), a result applied again after a
+  // truncation, rebuild or fork does not count twice.
+  private observe = (r: { ref: { txHash: Hex; index: number }; valid: boolean; reason: string | null }): void => {
+    this.results.add(canon([refKey(r.ref), r.valid, r.reason]));
   };
+
+  private isComplete(c: Credential): boolean {
+    return this.flags.get(credKey(c))?.complete ?? true;
+  }
+
+  // Inputs of complete credentials that are not applied, at or below `bound` and, with
+  // `aboveG`, above G.
+  private waiting(s: EngineSnapshot, bound: Pos, aboveG: boolean): string[] {
+    const applied = new Map(s.appliedThrough.map((a) => [credKey(a.credential), a.at] as const));
+    const out: string[] = [];
+    const add = (c: Credential, at: Pos, id: string): void => {
+      if (!this.isComplete(c) || comparePos(at, bound) > 0) return;
+      if (aboveG && comparePos(at, s.frontiers.G) <= 0) return;
+      const through = applied.get(credKey(c));
+      if (through === undefined || comparePos(at, through) > 0) out.push(id);
+    };
+    for (const q of s.queue) if (!q.applied) add(q.subject, q.at, `queue ${q.txHash}#${q.at.index}`);
+    for (const l of s.ledger) add(l.credential, posOfCert(l), `ledger ${l.txHash}#${l.certIndex}`);
+    return out;
+  }
+
+  // A settled engine: G at END(L), nothing of a complete credential waits below its bound.
+  private checkQuiescent(s: EngineSnapshot): void {
+    const { G, L, R } = s.frontiers;
+    if (comparePos(G, endOf(L)) !== 0) throw new ConformanceError(`settled with G ${canon(G)} behind END(${L})`);
+    const left = this.waiting(s, R === null ? G : minPos(G, endOf(R)), false);
+    if (left.length > 0) throw new ConformanceError(`settled with inputs of complete credentials unapplied: ${left.slice(0, 5).join(', ')}`);
+  }
 
   // One run. A lost lease ends the run, the driver takes a new lease for the next one.
   async run(budget: Budget, maxCommits?: number): Promise<RunReport | null> {
@@ -348,7 +414,11 @@ class Driver {
       if (this.baseline) checkMonotone(this.baseline, snap);
       checkQueue(snap);
     }
-    if (report?.phase === 'normal' && comparePos(snap.frontiers.G, endOf(snap.frontiers.L)) < 0) this.gBehind = true;
+    // G limited a credential: a complete credential has inputs above G within END(R).
+    if (report?.phase === 'normal' && !this.gBehind) {
+      const { R } = snap.frontiers;
+      if (this.waiting(snap, R === null ? endOf(Number.MAX_SAFE_INTEGER) : endOf(R), true).length > 0) this.gBehind = true;
+    }
     this.baseline = snap;
     return report;
   }
@@ -392,12 +462,17 @@ class Driver {
     await this.store.setFrontiers(this.target);
   }
 
-  // Runs until no recovery is open and a normal run reports no more work.
+  // Runs until no recovery is open and a normal run reports no more work, then checks that
+  // the engine is really done. The schedule's last budget is used, so a `more` that is
+  // wrong for a full batch shows here.
   async settle(budget: Budget): Promise<void> {
     for (let i = 0; i < 20_000; i++) {
       const pending = await this.store.pendingRecovery();
       const r = await this.run(budget);
-      if (pending === null && r?.phase === 'normal' && !r.more && (await this.store.pendingRecovery()) === null) return;
+      if (pending === null && r?.phase === 'normal' && !r.more && (await this.store.pendingRecovery()) === null) {
+        this.checkQuiescent(await this.store.snapshot());
+        return;
+      }
     }
     throw new ConformanceError('the engine did not settle');
   }
@@ -476,7 +551,7 @@ class Driver {
         // Everything up to the cut applied without a new suffix equals replay over the cut chain.
         if (this.allComplete()) {
           await this.setFrontiers({ L: Math.max(this.target.L, s.to), R: Math.max(this.target.R ?? -1, s.to) });
-          await this.settle(BIG_BUDGET);
+          await this.settle(this.budget);
           await this.compare();
           this.cov.cutChecks++;
         }
@@ -487,23 +562,17 @@ class Driver {
   }
 
   // The end: every credential complete, the frontiers at the tip, settled, compared.
-  async finish(chain: readonly ChainInput[]): Promise<EngineSnapshot> {
-    const creds = new Map<string, Credential>();
-    for (const x of [...chain, ...this.ref.values()]) {
-      if (x.kind === 'ledger') creds.set(credKey(x.input.credential), x.input.credential);
-    }
-    for (const f of this.flags.values()) if (!f.complete) creds.set(credKey(f.c), f.c);
+  async finish(): Promise<EngineSnapshot> {
     // The final completion is the driver's own, it does not count as a late completion.
-    for (const c of creds.values()) {
-      if (this.flags.get(credKey(c))?.complete === false) {
-        this.flags.set(credKey(c), { c, complete: true });
-        await this.store.setComplete(c, true);
-      }
+    for (const f of [...this.flags.values()]) {
+      if (f.complete) continue;
+      this.flags.set(credKey(f.c), { c: f.c, complete: true });
+      await this.store.setComplete(f.c, true);
     }
     await this.redeliver();
     const tip = [...this.ref.values()].reduce((h, x) => Math.max(h, heightOf(x)), Math.max(this.target.L, this.target.R ?? -1));
     await this.setFrontiers({ L: tip, R: tip });
-    await this.settle(BIG_BUDGET);
+    await this.settle(this.budget);
     const snap = await this.compare();
     const proj = engineProjection(snap);
     const dissolves = new Map<string, Pos>();
@@ -515,6 +584,12 @@ class Driver {
       const sameTx = d !== undefined && d.blockHeight === i.closedAt.blockHeight && d.txIndex === i.closedAt.txIndex;
       if (sameTx && i.reason === 'retired') this.cov.closes['tie:unreg-before-dissolve'] = (this.cov.closes['tie:unreg-before-dissolve'] ?? 0) + 1;
       if (sameTx && i.reason === 'left') this.cov.closes['tie:leave-before-dissolve'] = (this.cov.closes['tie:leave-before-dissolve'] ?? 0) + 1;
+    }
+    for (const key of this.results) {
+      const [, valid, reason] = JSON.parse(key) as [string, boolean, string | null];
+      this.cov.results++;
+      if (valid) this.cov.valid++;
+      if (reason !== null) this.cov.reasons[reason] = (this.cov.reasons[reason] ?? 0) + 1;
     }
     this.cov.schedules = 1;
     this.cov.schedulesWithGBehindL = this.gBehind ? 1 : 0;
@@ -532,11 +607,15 @@ export async function runSchedule(
   makeStore: () => DriverStore | Promise<DriverStore>, chain: ChainInput[], schedule: ScheduleStep[],
 ): Promise<ScheduleResult> {
   const d = new Driver(await makeStore());
+  d.lastDeliver = schedule.map((s) => s.kind).lastIndexOf('deliver');
   await d.start();
   let i = 0;
   try {
-    for (; i < schedule.length; i++) await d.step(schedule[i] as ScheduleStep);
-    const final = await d.finish(chain);
+    for (; i < schedule.length; i++) {
+      d.setStep(i);
+      await d.step(schedule[i] as ScheduleStep);
+    }
+    const final = await d.finish();
     return { final, coverage: d.cov, checkpoints: d.checkpoints };
   } catch (e) {
     // Engine errors get the step too, so every failure names where it happened.

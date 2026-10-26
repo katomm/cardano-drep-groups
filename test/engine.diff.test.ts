@@ -27,6 +27,7 @@ describe('incremental engine against replay', () => {
     }
     expect(cov.schedulesWithGBehindL).toBeGreaterThan(50);
     expect(cov.completedAfterRollback).toBeGreaterThan(0);
+    expect(cov.cutChecks).toBeGreaterThanOrEqual(40);
     expect(cov.rebuildsMidway).toBeGreaterThan(0);
     expect(cov.validShare).toBeGreaterThan(0.3);
   }, 300_000);

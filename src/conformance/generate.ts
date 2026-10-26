@@ -1,111 +1,14 @@
 // Seeded generators for the differential test of the incremental engine: random chains
 // with the hostile shapes of the protocol, and random delivery and run schedules over them.
-// The only randomness is the xorshift generator below, so a seed reproduces its chain and
+// The only randomness is the xorshift generator of rng.ts, so a seed reproduces its chain and
 // its schedule exactly.
 import type { Budget } from '../engine/types.js';
 import { nativeScriptHash } from '../hash.js';
 import { hexToBytes } from '../hex.js';
 import { credKey } from '../state.js';
+import { type Cbor, encodeCbor } from './cbor.js';
+import { Rng } from './rng.js';
 import type { ChainInput, ChainTx, Credential, EventRef, Hex, LedgerInput } from '../types.js';
-
-// xorshift32, seeded through a multiplicative hash so that neighbouring seeds diverge at once.
-export class Rng {
-  private s: number;
-  constructor(seed: number) {
-    this.s = (Math.imul(seed ^ 0x5bd1e995, 0x9e3779b1) ^ 0x85ebca6b) >>> 0 || 1;
-    for (let i = 0; i < 4; i++) this.next();
-  }
-  next(): number {
-    let x = this.s;
-    x ^= x << 13;
-    x >>>= 0;
-    x ^= x >>> 17;
-    x ^= x << 5;
-    this.s = x >>> 0;
-    return this.s;
-  }
-  float(): number {
-    return this.next() / 0x1_0000_0000;
-  }
-  int(n: number): number {
-    return Math.floor(this.float() * n);
-  }
-  range(lo: number, hi: number): number {
-    return lo + this.int(hi - lo + 1);
-  }
-  chance(p: number): boolean {
-    return this.float() < p;
-  }
-  pick<T>(xs: readonly T[]): T {
-    if (xs.length === 0) throw new Error('pick from an empty list');
-    return xs[this.int(xs.length)] as T;
-  }
-  // One entry of `table`, weighted by its first element.
-  weighted<T>(table: ReadonlyArray<readonly [number, T]>): T {
-    const total = table.reduce((n, [w]) => n + w, 0);
-    let r = this.float() * total;
-    for (const [w, v] of table) {
-      r -= w;
-      if (r < 0) return v;
-    }
-    return (table[table.length - 1] as readonly [number, T])[1];
-  }
-  shuffle<T>(xs: T[]): T[] {
-    for (let i = xs.length - 1; i > 0; i--) {
-      const j = this.int(i + 1);
-      [xs[i], xs[j]] = [xs[j] as T, xs[i] as T];
-    }
-    return xs;
-  }
-}
-
-// A minimal definite length CBOR encoder for payloads and native scripts. Numbers are
-// unsigned integers, a Map has unsigned integer keys.
-export type Cbor = number | bigint | Uint8Array | string | Cbor[] | Map<number, Cbor>;
-
-function head(out: number[], major: number, n: bigint): void {
-  const m = major << 5;
-  if (n < 24n) out.push(m | Number(n));
-  else if (n < 0x100n) out.push(m | 24, Number(n));
-  else if (n < 0x1_0000n) out.push(m | 25, Number(n >> 8n), Number(n & 0xffn));
-  else if (n < 0x1_0000_0000n) {
-    out.push(m | 26);
-    for (let i = 3; i >= 0; i--) out.push(Number((n >> BigInt(8 * i)) & 0xffn));
-  } else {
-    out.push(m | 27);
-    for (let i = 7; i >= 0; i--) out.push(Number((n >> BigInt(8 * i)) & 0xffn));
-  }
-}
-
-function put(out: number[], v: Cbor): void {
-  if (typeof v === 'number' || typeof v === 'bigint') {
-    const n = BigInt(v);
-    if (n < 0n) throw new Error('the encoder writes unsigned integers only');
-    head(out, 0, n);
-  } else if (v instanceof Uint8Array) {
-    head(out, 2, BigInt(v.length));
-    for (const b of v) out.push(b);
-  } else if (typeof v === 'string') {
-    const b = new TextEncoder().encode(v);
-    head(out, 3, BigInt(b.length));
-    for (const x of b) out.push(x);
-  } else if (Array.isArray(v)) {
-    head(out, 4, BigInt(v.length));
-    for (const x of v) put(out, x);
-  } else {
-    head(out, 5, BigInt(v.size));
-    for (const [k, x] of v) {
-      put(out, k);
-      put(out, x);
-    }
-  }
-}
-
-export function encodeCbor(v: Cbor): Uint8Array {
-  const out: number[] = [];
-  put(out, v);
-  return Uint8Array.from(out);
-}
 
 // Native script values in their CBOR array form.
 const sigS = (k: Hex): Cbor => [0, hexToBytes(k)];
@@ -540,7 +443,9 @@ class ChainBuilder {
   }
 
   private malformed(d: Draft): boolean {
-    d.events.push(this.rng.weighted<Cbor>([[1, [9]], [1, [0, 5, hexToBytes(keyHash(1)), []]], [1, [3, [0]]], [1, [4]], [1, 'x']]));
+    d.events.push(this.rng.weighted<Cbor>([
+      [3, [9]], [3, 'x'], [2, 7], [1, [0, 5, hexToBytes(keyHash(1)), []]], [1, [3, [0]]], [1, [4]],
+    ]));
     return true;
   }
 
@@ -679,10 +584,12 @@ class ChainBuilder {
       return;
     }
     if (shape === 'complex') {
-      // A script over the node limit is skipped, the other entries stay usable.
+      // Scripts over the node or the depth limit are skipped, the other entries stay usable.
       const big = encodeCbor(nOfKS(1, ...Array.from({ length: 70 }, (_, i) => sigS(keyHash((i % 12) + 1)))));
+      let deep: Cbor = sigS(keyHash(this.rng.range(1, 12)));
+      for (let i = 0; i < 8; i++) deep = allS(deep);
       const p = this.rng.pick(this.policies);
-      d.rawEntries = [chunk64(big), chunk64(p.bytes)];
+      d.rawEntries = [chunk64(this.rng.chance(0.5) ? big : encodeCbor(deep)), chunk64(p.bytes)];
       if (!d.ignored) this.published.add(p.hash);
       this.randomEvent(d);
       d.rawEntries.push(...d.scripts.slice(0, 6).map((s) => chunk64(s.bytes)));
@@ -704,6 +611,8 @@ class ChainBuilder {
     else {
       const n = this.rng.weighted([[5, 1], [3, 2], [1, 3], [1, 4]] as const);
       for (let i = 0; i < n; i++) this.randomEvent(d);
+      // An undecodable event next to readable ones, so the tx is no marker and it is seen.
+      if (this.rng.chance(0.12)) this.malformed(d);
     }
     if (d.events.length === 0) this.malformed(d);
     this.finish(d);
@@ -848,6 +757,10 @@ export function generateSchedule(seed: number, chain: ChainInput[], opts: Schedu
   let L = -1;
   let R: number | null = rng.chance(0.3) ? null : -1;
   const incomplete = new Set<string>();
+  const certTxs = new Set(chain.flatMap((x) => (x.kind === 'ledger' ? [x.input.txHash] : [])));
+  const moved = new Set<string>(); // label txs a rollback suffix carries to another height
+  let fresh = 0;
+  const newHash = (): Hex => `cc${(seed >>> 0).toString(16).padStart(8, '0')}${(fresh++).toString(16).padStart(8, '0')}`.padEnd(64, 'c');
   const byKey = new Map(creds.map((c) => [credKey(c), c] as const));
 
   const deliver = (inputs: ChainInput[]): void => {
@@ -929,18 +842,35 @@ export function generateSchedule(seed: number, chain: ChainInput[], opts: Schedu
       runs();
     }
     if (n === rollbackAt && delivered.size > 0) {
+      // Often every credential is complete at the rollback, so the cut chain check can run.
+      if (rng.chance(0.7)) {
+        for (const k of incomplete) steps.push({ kind: 'complete', c: byKey.get(k) as Credential, complete: true });
+        incomplete.clear();
+      }
       const heights = [...new Set([...delivered.values()].map(heightOf))].sort((a, b) => a - b);
       const to = rng.pick(heights) - 1;
-      // A different suffix: part of the rolled back inputs again, the rest never.
+      // A different suffix: part of the rolled back inputs again, some label txs of the old
+      // branch at another height after the cut, and new txs, the rest never.
       const above = [...delivered.values()].filter((x) => heightOf(x) > to);
-      const kept = above.filter(() => rng.chance(0.6));
+      const kept: ChainInput[] = [];
+      let slot = 0;
+      const elsewhere = (tx: ChainTx, txHash: Hex): ChainInput =>
+        ({ kind: 'tx', tx: { ...tx, txHash, blockHeight: to + 1 + rng.int(6), txIndex: 100 + slot++ } });
+      for (const x of above) {
+        const r = rng.float();
+        if (x.kind === 'tx' && !certTxs.has(x.tx.txHash) && r < 0.15) {
+          kept.push(elsewhere(x.tx, x.tx.txHash));
+          moved.add(inputKey(x));
+        } else if (r < 0.65) kept.push(x);
+        if (x.kind === 'tx' && rng.chance(0.15)) kept.push(elsewhere(x.tx, newHash()));
+      }
       delivered = new Map([...delivered].filter(([, x]) => heightOf(x) <= to));
       L = Math.min(L, to);
       if (R !== null) R = Math.min(R, to);
       steps.push({ kind: 'rollback', to, suffix: kept });
       for (const x of kept) delivered.set(inputKey(x), x);
       // Inputs of the old branch that were still held back are dropped with it.
-      held = held.filter((x) => heightOf(x) <= to || rng.chance(0.5));
+      held = held.filter((x) => (heightOf(x) <= to || rng.chance(0.5)) && !moved.has(inputKey(x)));
       completeness();
       runs();
     }
@@ -964,7 +894,8 @@ export function generateSchedule(seed: number, chain: ChainInput[], opts: Schedu
   // The end: every credential complete, the frontiers at the tip, large runs.
   for (const k of incomplete) steps.push({ kind: 'complete', c: byKey.get(k) as Credential, complete: true });
   steps.push({ kind: 'frontiers', L: maxH, R: maxH });
-  for (let i = 0; i < 3; i++) steps.push({ kind: 'run', budget: BIG_BUDGET });
+  // Mostly the driver's own settle finishes the work, so a wrong `more` is seen there.
+  if (rng.chance(0.3)) for (let i = 0; i < 3; i++) steps.push({ kind: 'run', budget: BIG_BUDGET });
   steps.push({ kind: 'check', label: 'end' });
   return steps;
 }
