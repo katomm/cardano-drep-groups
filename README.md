@@ -92,7 +92,9 @@ DRep registrations and retirements come from `GET /drep_updates`, the position o
 import { MemoryStore, runEngine } from 'drep-groups';
 
 const store = new MemoryStore();
-store.ingestLabelTx(tx);                // chain inputs go in through the store
+store.ingestLabelTx(tx);                // label transactions
+store.ingestLedgerRow(row);             // DRep registrations and retirements
+store.setFrontiers({ L: labelHeight, R: ledgerHeight }); // heights read completely so far
 const lease = store.acquireLease('indexer');
 const budget = { controlTxs: 50, controlBytes: 200_000, credentialUnits: 50, credentialInputs: 500, truncateRows: 1000, resetRows: 1000 };
 
