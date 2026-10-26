@@ -35,14 +35,14 @@ function keyStrings(k: Keys): string[] {
 }
 
 // A bounded view: answers only for the keys it was loaded for, from the committed state
-// and the overlay of earlier units of the same batch, like Store.load(keys, overlay).
+// alone. It never merges the overlay, the units read it through LazyWorld.
 class FixtureView implements View {
-  constructor(private c: Committed, private overlay: ChangeSet[], private loaded: Set<string>) {}
+  constructor(private c: Committed, private loaded: Set<string>) {}
   private versions(g: EventRef): GroupVersion[] {
-    return [...this.c.versions, ...this.overlay.flatMap((o) => o.versions)].filter((v) => refKey(v.id) === refKey(g));
+    return this.c.versions.filter((v) => refKey(v.id) === refKey(g));
   }
   scriptAt(hash: Hex, at: Pos): NativeScript | null {
-    const all = [...this.c.scripts, ...this.overlay.flatMap((o) => o.scripts)];
+    const all = this.c.scripts;
     return all.find((s) => s.hash === hash && comparePos(s.at, at) <= 0)?.script ?? null;
   }
   groupAt(g: EventRef, at: Pos): GroupVersion | null {
@@ -85,16 +85,16 @@ const chainTx = (o: Parameters<typeof txIn>[0]): ChainTx => (txIn(o) as { kind: 
 
 // Routes a tx against the queue, then loads the three stages and runs the unit once,
 // the order runEngine uses. Returns the step and the number of loads it took.
-function runControl(c: Committed, tx: ChainTx, overlay: ChangeSet[] = [], stages: 0 | 1 | 2 | 3 = 3, observe?: Parameters<typeof applyControl>[3]) {
+function runControl(c: Committed, tx: ChainTx, overlay: ChangeSet[] = [], stages: 0 | 1 | 2 | 3 = 3, observe?: Parameters<typeof applyControl>[4]) {
   const decoded = decodePayload(tx.payload!)!;
   const queue = [...c.queued, ...overlay.flatMap((o) => o.queued.map((q) => ({ ref: { txHash: q.txHash, index: q.at.index }, event: q.event })))];
   const routed = routeTx(tx, decoded, (r) => queue.find((q) => refKey(q.ref) === refKey(r))?.event ?? null);
-  let view: View = new FixtureView(c, overlay, new Set());
+  let view: View = new FixtureView(c, new Set());
   for (let s = 1; s <= stages; s++) {
-    const keys = stageKeys(s as 1 | 2 | 3, { tx, routed }, s === 1 ? null : view);
-    view = new FixtureView(c, overlay, new Set(keyStrings(keys)));
+    const keys = stageKeys(s as 1 | 2 | 3, { tx, routed }, s === 1 ? null : view, overlay);
+    view = new FixtureView(c, new Set(keyStrings(keys)));
   }
-  return { step: applyControl(view, tx, routed, observe), routed };
+  return { step: applyControl(view, tx, routed, overlay, observe), routed };
 }
 const done = (s: Step<ChangeSet>): ChangeSet => {
   if (!('done' in s)) throw new Error(`unit still needs ${JSON.stringify(s.need)}`);
@@ -212,6 +212,10 @@ describe('applyControl', () => {
     const cs2 = done(runControl(c, tx2, [cs1]).step);
     expect(cs2.verdicts).toMatchObject([{ tag: 'update', valid: true, group: { txHash: T(10), index: 0 } }]);
     expect(cs2.versions).toMatchObject([{ seq: 1n, control: hashOf(C1) }]);
+    // The view does not merge the overlay, yet stage 2 names the control script published
+    // before the batch through the overlay version, so the unit finishes within the stages.
+    expect(runControl(c, tx2, [cs1], 1).step).toMatchObject({ need: { scriptsAt: [[hashOf(C0), posOfEvent(tx2, 0)]] } });
+    expect(runControl(c, tx2, [cs1], 2).step).toEqual(runControl(c, tx2, [cs1], 3).step);
     // Without the overlay the second tx does not see the group.
     expect(done(runControl(c, tx2).step).verdicts).toEqual([]);
   });
@@ -240,8 +244,8 @@ describe('LazyWorld', () => {
     joinId: { txHash: T(5), index: 0 }, group: G1, member: M, mode: 'open',
     joinedAt: at(5), approvedAt: null, closedAt: null, closeReason: null, ...o,
   });
-  const all = (c: Committed, overlay: ChangeSet[] = []) => {
-    const v = new FixtureView(c, overlay, new Set());
+  const all = (c: Committed) => {
+    const v = new FixtureView(c, new Set());
     // Loaded for everything: missing() answers nothing.
     v.missing = () => ({ instances: [], latestInstances: [], groupsAt: [], scriptsAt: [], credentialAt: [] });
     return v;
@@ -261,7 +265,7 @@ describe('LazyWorld', () => {
 
   it('answers a group of a tx of the own or overlay unit without a key, positive or negative', () => {
     const own = { ...emptyChangeSet(), txContexts: [{ txHash: T(10), context: { signers: [], requiredSigners: [], invalidBefore: null, invalidHereafter: null } }] };
-    const w = new LazyWorld(new FixtureView(committed(), [], new Set()), [], own);
+    const w = new LazyWorld(new FixtureView(committed(), new Set()), [], own);
     expect(w.groupAt({ txHash: T(10), index: 3 }, at(10, 5))).toBeNull();
     expect(w.needed.groupsAt).toEqual([]);
     expect(w.groupAt({ txHash: T(4), index: 0 }, at(10, 5))).toBeNull();
@@ -269,7 +273,7 @@ describe('LazyWorld', () => {
   });
 
   it('records each missing key once and returns null for it', () => {
-    const w = new LazyWorld(new FixtureView(committed({ scripts: [published(C0, early)] }), [], new Set()), [], emptyChangeSet());
+    const w = new LazyWorld(new FixtureView(committed({ scripts: [published(C0, early)] }), new Set()), [], emptyChangeSet());
     expect(w.scriptAt(hashOf(C0), at(9))).toBeNull();
     expect(w.scriptAt(hashOf(C0), at(9))).toBeNull();
     expect(w.registeredAt(M, at(9))).toBe(false);
@@ -296,7 +300,7 @@ describe('LazyWorld', () => {
 
   it('takes the last own row of an instance', () => {
     const own = { ...emptyChangeSet(), instances: [inst({ mode: 'permissioned' }), inst({ mode: 'permissioned', approvedAt: at(6) })] };
-    const w = new LazyWorld(new FixtureView(committed(), [], new Set()), [], own);
+    const w = new LazyWorld(new FixtureView(committed(), new Set()), [], own);
     expect(w.instanceAt(inst().joinId, at(7))?.inst.approvedAt).toEqual(at(6));
     expect(w.needed.instances).toEqual([]);
   });
@@ -346,10 +350,32 @@ describe('stageKeys for a credential unit', () => {
       instances: [{ txHash: T(30), index: 0 }], latestInstances: [[G1, M]],
       groupsAt: [[G1, joinAt]], scriptsAt: [], credentialAt: [[M, joinAt], [M, approveAt]],
     });
-    const view2 = new FixtureView(c, [], new Set(keyStrings(s1)));
+    const view2 = new FixtureView(c, new Set(keyStrings(s1)));
     const s2 = stageKeys(2, { c: M, inputs }, view2);
     expect(s2.groupsAt).toEqual([[G1, joinAt], [G1, approveAt]]);
-    const s3 = stageKeys(3, { c: M, inputs }, new FixtureView(c, [], new Set(keyStrings(s2))));
+    const s3 = stageKeys(3, { c: M, inputs }, new FixtureView(c, new Set(keyStrings(s2))));
+    expect(s3.scriptsAt).toEqual([[hashOf(A0), approveAt]]);
+  });
+
+  it('reads instances and versions of the overlay, not only the view', () => {
+    const M = keyCred(K(7));
+    const tx = chainTx({ hash: T(31), h: 31, rs: [K(7)] });
+    const approveAt = posOfEvent(tx, 0);
+    const J: EventRef = { txHash: T(25), index: 0 };
+    const joinedAt = posOfEvent({ txHash: T(25), blockHeight: 25, txIndex: 0 }, 0);
+    const ctx = { signers: [K(7)], requiredSigners: [K(7)], invalidBefore: null, invalidHereafter: null };
+    const inputs = [{ kind: 'event' as const, tx: ctx, q: { subject: M, at: approveAt, group: null, txHash: T(31), event: { ok: true as const, event: { tag: 'approve' as const, join: J } } } }];
+    const overlay = [{
+      ...emptyChangeSet(),
+      versions: [v0()],
+      instances: [{ joinId: J, group: G1, member: M, mode: 'permissioned' as const, joinedAt, approvedAt: null, closedAt: null, closeReason: null }],
+    }];
+    const c = committed();
+    const s1 = stageKeys(1, { c: M, inputs }, null, overlay);
+    const s2 = stageKeys(2, { c: M, inputs }, new FixtureView(c, new Set(keyStrings(s1))), overlay);
+    expect(s2.groupsAt).toEqual([[G1, approveAt]]);
+    expect(s2.credentialAt).toEqual([[M, approveAt], [M, joinedAt]]);
+    const s3 = stageKeys(3, { c: M, inputs }, new FixtureView(c, new Set(keyStrings(s2))), overlay);
     expect(s3.scriptsAt).toEqual([[hashOf(A0), approveAt]]);
   });
 });

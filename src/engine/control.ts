@@ -27,11 +27,14 @@ function orphanReason(r: RoutedEvent): string {
 
 // Writes the key 2 scripts, the tx context, the control events through the A4 rules and
 // their verdicts when they have a group, and a queue entry for every membership event.
+// `overlay` holds the change sets of earlier units of the same uncommitted batch.
 // Pure over the view: when a read hits a key the view was not loaded for, the unit
 // returns every such key instead of a change set.
-export function applyControl(view: View, tx: ChainTx, routed: Routed, observe?: RuleObserver): Step<ChangeSet> {
+export function applyControl(
+  view: View, tx: ChainTx, routed: Routed, overlay: ChangeSet[] = [], observe?: RuleObserver,
+): Step<ChangeSet> {
   const own = emptyChangeSet();
-  const world = new LazyWorld(view, [], own);
+  const world = new LazyWorld(view, overlay, own);
   const scriptsAt = posOfScripts(tx);
   for (const s of routed.scripts) {
     if (!own.scripts.some((x) => x.hash === s.hash)) own.scripts.push({ hash: s.hash, script: s.script, bytes: s.bytes, at: scriptsAt });

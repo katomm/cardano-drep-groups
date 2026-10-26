@@ -133,8 +133,9 @@ export class LazyWorld implements RuleWorld {
     return effectiveClose(inst, this.dissolveOf(inst.group, at), this.firstUnregAfter(inst.member, inst.joinedAt), at);
   }
 
-  // The stored row of a join: the last write in the own unit, then in the overlay, then the view.
-  private stored(join: EventRef): StoredInstance | null {
+  // The stored row of a join, independent of a position: the last write in the own unit,
+  // then in the overlay, then the view.
+  stored(join: EventRef): StoredInstance | null {
     for (const s of this.sets) {
       const rows = s.instances.filter((i) => sameRef(i.joinId, join));
       if (rows.length > 0) return rows[rows.length - 1] as StoredInstance;
@@ -148,8 +149,9 @@ export class LazyWorld implements RuleWorld {
     return { inst, close: this.closeOf(inst, at) };
   }
 
-  openSlotAt(group: EventRef, c: Credential, at: Pos): StoredInstance | null {
-    // The most recent writer of a join wins, own first, within a change set its last row.
+  // The latest stored instance of (group, c), independent of a position. The most recent
+  // writer of a join wins, own first, within a change set its last row.
+  latestStored(group: EventRef, c: Credential): StoredInstance | null {
     const rows = new Map<string, StoredInstance>();
     for (const s of this.sets) {
       const mine = new Map<string, StoredInstance>();
@@ -158,7 +160,12 @@ export class LazyWorld implements RuleWorld {
     }
     let latest: StoredInstance | null = null;
     for (const i of rows.values()) if (latest === null || comparePos(i.joinedAt, latest.joinedAt) > 0) latest = i;
-    if (latest === null) latest = this.loaded({ latestInstances: [[group, c]] }) ? this.view.latestInstance(group, c) : null;
+    if (latest !== null) return latest;
+    return this.loaded({ latestInstances: [[group, c]] }) ? this.view.latestInstance(group, c) : null;
+  }
+
+  openSlotAt(group: EventRef, c: Credential, at: Pos): StoredInstance | null {
+    const latest = this.latestStored(group, c);
     if (latest === null || comparePos(latest.joinedAt, at) >= 0) return null;
     return this.closeOf(latest, at) === null ? latest : null;
   }
@@ -171,16 +178,20 @@ type CredentialInputs = { c: Credential; inputs: CredentialInput[] };
 // unit loads in at most three rounds. Stage 1 is what the events name, stage 2 what the
 // versions and instances loaded in stage 1 name, stage 3 the scripts those name. Each
 // stage returns the keys of all stages up to it, so a store may load every stage alone.
-// `partial` is the view of the previous stage as Store.load returned it, which answers
-// the overlay of earlier units of the batch too.
-export function stageKeys(stage: 1 | 2 | 3, inputs: ControlInputs | CredentialInputs, partial: View | null): Keys {
+// `partial` is the view of the previous stage as Store.load returned it, `overlay` the
+// change sets of earlier units of the same batch. Both are read through a LazyWorld, so
+// versions and instances of the overlay are seen without a view that merges them.
+export function stageKeys(
+  stage: 1 | 2 | 3, inputs: ControlInputs | CredentialInputs, partial: View | null, overlay: ChangeSet[] = [],
+): Keys {
   const out = new KeySet();
-  if ('tx' in inputs) controlKeys(stage, inputs, partial, out);
-  else credentialKeys(stage, inputs, partial, out);
+  const read = partial ? new LazyWorld(partial, overlay, emptyChangeSet()) : null;
+  if ('tx' in inputs) controlKeys(stage, inputs, read, out);
+  else credentialKeys(stage, inputs, read, out);
   return out.keys;
 }
 
-function controlKeys(stage: 1 | 2 | 3, { routed }: ControlInputs, partial: View | null, out: KeySet): void {
+function controlKeys(stage: 1 | 2 | 3, { routed }: ControlInputs, partial: LazyWorld | null, out: KeySet): void {
   // Hashes that earlier control events of this tx named for a group. A later event on the
   // same group may read them as its current policies at its own position.
   const named = new Map<string, Hex[]>();
@@ -217,7 +228,7 @@ function controlKeys(stage: 1 | 2 | 3, { routed }: ControlInputs, partial: View 
   }
 }
 
-function credentialKeys(stage: 1 | 2 | 3, { c, inputs }: CredentialInputs, partial: View | null, out: KeySet): void {
+function credentialKeys(stage: 1 | 2 | 3, { c, inputs }: CredentialInputs, partial: LazyWorld | null, out: KeySet): void {
   // Joins of this unit, so a later input on the same join finds its group before it is stored.
   const ownJoins = new Map<string, { group: EventRef; joinedAt: Pos }>();
   for (const x of inputs) {
@@ -238,7 +249,7 @@ function credentialKeys(stage: 1 | 2 | 3, { c, inputs }: CredentialInputs, parti
       out.group(g, at);
       out.latest(g, c);
       ownJoins.set(refKey(self), { group: g, joinedAt: at });
-      const li = stage >= 2 && partial ? partial.latestInstance(g, c) : null;
+      const li = stage >= 2 && partial ? partial.latestStored(g, c) : null;
       if (li) out.credential(li.member, li.joinedAt);
       continue;
     }
@@ -247,7 +258,7 @@ function credentialKeys(stage: 1 | 2 | 3, { c, inputs }: CredentialInputs, parti
     if (!j) continue;
     out.instance(j);
     if (stage < 2) continue;
-    const stored = partial?.instance(j) ?? null;
+    const stored = partial?.stored(j) ?? null;
     const inst = stored ? { group: stored.group, joinedAt: stored.joinedAt, member: stored.member } : (() => {
       const o = ownJoins.get(refKey(j));
       return o ? { ...o, member: c } : null;
