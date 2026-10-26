@@ -1,6 +1,5 @@
-import { nativeScriptHash } from './hash.js';
 import type { CloseReason } from './effective.js';
-import { parseNativeScript } from './nativeScript.js';
+import { memberScriptWitness } from './nativeScript.js';
 import { decodePayload } from './payload.js';
 import { comparePos, type Pos, posOfCert, posOfEvent, posOfScripts } from './position.js';
 import { eventRule, type GroupVersion, type RuleWorld, type RuleWrite, type StoredInstance } from './rules.js';
@@ -99,13 +98,8 @@ class EagerWorld implements RuleWorld {
     const at = posOfCert(l);
     if (l.kind === 'reg') {
       this.registered.add(ck);
-      if (l.credential.kind === 'script') {
-        for (const raw of l.witnessScripts ?? []) {
-          if (nativeScriptHash(raw) !== l.credential.hash) continue;
-          const s = parseNativeScript(raw);
-          if (s) this.memberScripts.set(l.credential.hash, s);
-        }
-      }
+      const m = memberScriptWitness(l.credential, l.witnessScripts);
+      if (m) this.memberScripts.set(l.credential.hash, m.script);
       return;
     }
     this.registered.delete(ck);

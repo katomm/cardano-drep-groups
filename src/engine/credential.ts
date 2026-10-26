@@ -1,6 +1,5 @@
 // The membership plane unit: applies the inputs of one credential over a bounded view.
-import { nativeScriptHash } from '../hash.js';
-import { parseNativeScript } from '../nativeScript.js';
+import { memberScriptWitness } from '../nativeScript.js';
 import { comparePos, type Pos } from '../position.js';
 import { membershipRule } from '../rules.js';
 import type { Credential, EvalContext, EventRef } from '../types.js';
@@ -32,14 +31,9 @@ export function applyCredential(
         own.effects.push({ kind: 'credentialRetired', credential: c, at: x.at });
         continue;
       }
-      if (c.kind !== 'script' || own.memberScripts.length > 0) continue;
-      for (const bytes of l.witnessScripts ?? []) {
-        if (nativeScriptHash(bytes) !== c.hash) continue;
-        const script = parseNativeScript(bytes);
-        if (!script) continue;
-        own.memberScripts.push({ credential: c, script, bytes, at: x.at });
-        break;
-      }
+      if (own.memberScripts.length > 0) continue;
+      const m = memberScriptWitness(c, l.witnessScripts);
+      if (m) own.memberScripts.push({ credential: c, script: m.script, bytes: m.bytes, at: x.at });
       continue;
     }
 

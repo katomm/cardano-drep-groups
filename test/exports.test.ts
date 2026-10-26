@@ -23,7 +23,7 @@ describe('package surface', () => {
     for (const fn of [
       root.scriptComplexity, root.comparePos, root.endOf, root.posOfCert, root.posOfScripts,
       root.posOfEvent, root.effectiveClose, root.runEngine, root.MemoryStore, root.classifyNewInput,
-      root.routeTx, root.LazyWorld, root.applyControl, root.applyCredential, root.replay,
+      root.routeTx, root.LazyWorld, root.applyControl, root.applyCredential, root.replay, root.memberScriptWitness,
     ]) expect(typeof fn).toBe('function');
     expect(root.ALL_REASONS.length).toBeGreaterThan(0);
   });

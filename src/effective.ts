@@ -1,6 +1,8 @@
 import { comparePos, type Pos } from './position.js';
+import type { InstanceReason } from './types.js';
 
-export type CloseReason = 'left' | 'removed' | 'retired' | 'dissolved';
+// The reason an instance closed, the same union as Instance.reason.
+export type CloseReason = InstanceReason;
 
 // The effective close of an instance: the earliest of its explicit close, the dissolve
 // of its group after the join and the first unreg of its member after the join. Each
