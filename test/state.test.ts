@@ -14,7 +14,11 @@ describe('replay: groups', () => {
   it('creates a group when the policy is satisfied and every listed key signed', () => {
     const s = replay([createTx()]);
     expect(s.groups).toMatchObject([{ id: { txHash: T(1), index: 0 }, mode: 'open', control: C, seq: 0n, status: 'active' }]);
-    expect(s.verdicts).toEqual([{ ref: { txHash: T(1), index: 0 }, tag: 'create', valid: true, reason: null }]);
+    expect(s.verdicts).toEqual([{
+      ref: { txHash: T(1), index: 0 }, tag: 'create', valid: true, reason: null,
+      at: { txHash: T(1), blockHeight: 10, txIndex: 0, phase: 2, index: 0 }, group: { txHash: T(1), index: 0 }, subject: null,
+    }]);
+    expect(s.groups[0]?.createdAt).toEqual({ txHash: T(1), blockHeight: 10, txIndex: 0, phase: 2, index: 0 });
   });
 
   it('rejects create below the threshold', () => {
@@ -170,6 +174,8 @@ describe('replay: membership', () => {
       join({ hash: T(3), h: 14 }),
     ]);
     expect(s.instances.map((i) => [i.joinId.txHash, i.state, i.reason])).toEqual([[T(2), 'closed', 'retired'], [T(3), 'active', null]]);
+    expect(s.instances[0]?.closedAt).toEqual({ txHash: T(0x41), blockHeight: 12, txIndex: 0, phase: 0, index: 0 });
+    expect(s.instances[0]?.joinedAt).toEqual({ txHash: T(2), blockHeight: 11, txIndex: 0, phase: 2, index: 0 });
   });
 
   it('retire then re-register then join inside one block', () => {
@@ -189,5 +195,58 @@ describe('replay: membership', () => {
     const j = txIn({ hash: T(2), h: 11, payload: buildPayload([ev.join(ref(T(1), 0), 'script', SC)]), wk: [K(0x60), K(0x61)] });
     expect(replay([regIn(scriptCred(SC), T(0x40), 5, 0, [scriptBytes(ms)]), openCreate, j]).verdicts[1]?.valid).toBe(true);
     expect(replay([regIn(scriptCred(SC), T(0x40), 5), openCreate, j]).verdicts[1]?.reason).toBe('member script unresolved');
+  });
+});
+
+describe('replay: verdict attribution', () => {
+  const tx1 = { group: { txHash: T(1), index: 0 } };
+
+  it('attributes verdicts with group, subject and position', () => {
+    const s = replay([reg, permCreate, join({ hash: T(2), h: 11 }), act('approve', T(2), T(3), 12, [K(2)])]);
+    expect(s.verdicts.map((v) => v.valid)).toEqual([true, true, true]);
+    expect(s.verdicts[0]).toMatchObject({ ...tx1, subject: null, at: { txHash: T(1), blockHeight: 10, phase: 2, index: 0 } });
+    expect(s.verdicts[1]).toMatchObject({ ...tx1, subject: keyCred(M), at: { txHash: T(2), blockHeight: 11, txIndex: 0, phase: 2, index: 0 } });
+    expect(s.verdicts[2]?.subject).toEqual(keyCred(M));
+    expect(s.verdicts[2]).toMatchObject({ ...tx1, at: { txHash: T(3), blockHeight: 12, phase: 2, index: 0 } });
+    expect(s.instances[0]?.approvedAt).toEqual({ txHash: T(3), blockHeight: 12, txIndex: 0, phase: 2, index: 0 });
+  });
+
+  it('gives an orphan approve group and subject null', () => {
+    const s = replay([reg, permCreate, act('approve', T(9), T(3), 12, [K(2)])]);
+    expect(s.verdicts[1]).toEqual({
+      ref: { txHash: T(3), index: 0 }, tag: 'approve', valid: false, reason: 'unknown join',
+      at: { txHash: T(3), blockHeight: 12, txIndex: 0, phase: 2, index: 0 }, group: null, subject: null,
+    });
+  });
+
+  it('gives a ref to a later or invalid join group and subject null', () => {
+    const later = replay([reg, permCreate, act('approve', T(2), T(3), 12, [K(2)]), join({ hash: T(2), h: 13 })]);
+    expect(later.verdicts[1]).toMatchObject({ valid: false, reason: 'unknown join', group: null, subject: null });
+    const invalid = replay([permCreate, join({ hash: T(2), h: 11 }), act('leave', T(2), T(3), 12, [M])]);
+    expect(invalid.verdicts[1]).toMatchObject({ valid: false, reason: 'not a registered DRep' });
+    expect(invalid.verdicts[2]).toMatchObject({ valid: false, reason: 'unknown join', group: null, subject: null });
+  });
+
+  it('attributes an update to the resolved group and a join to an unknown group to null', () => {
+    const stale = upd(T(2), 11, 5, new Map(), ALL);
+    const s = replay([reg, createTx(), stale, txIn({ hash: T(3), h: 12, payload: buildPayload([ev.join(ref(T(8), 0), 'key', M)]), rs: [M] })]);
+    expect(s.verdicts[1]).toMatchObject({ tag: 'update', valid: false, reason: 'stale seq', ...tx1, subject: null });
+    expect(s.verdicts[2]).toMatchObject({ tag: 'join', valid: false, reason: 'unknown group', group: null, subject: keyCred(M) });
+  });
+
+  it('attributes dissolve and closed-instance events and nulls invalid creates and undecodable events', () => {
+    const d = txIn({ hash: T(3), h: 12, payload: buildPayload([ev.dissolve(ref(T(1), 0), 0)]), rs: [K(1), K(2)] });
+    const s = replay([reg, openCreate, join({ hash: T(2), h: 11 }), d, d, act('leave', T(2), T(4), 13, [M])]);
+    expect(s.verdicts[2]).toMatchObject({ tag: 'dissolve', valid: true, ...tx1, subject: null });
+    expect(s.verdicts[3]).toMatchObject({ tag: 'leave', valid: false, reason: 'join is not open', ...tx1, subject: keyCred(M) });
+    expect(s.instances[0]?.closedAt).toEqual({ txHash: T(3), blockHeight: 12, txIndex: 0, phase: 2, index: 0 });
+    expect(replay([createTx({ rs: [K(1)] })]).verdicts[0]).toMatchObject({ valid: false, group: null, subject: null });
+    const bad = txIn({ hash: T(5), h: 20, payload: buildPayload([[99]]), rs: ALL });
+    expect(replay([bad]).verdicts[0]).toMatchObject({ tag: null, valid: false, group: null, subject: null, at: { txHash: T(5), blockHeight: 20, phase: 2, index: 0 } });
+  });
+
+  it('gives a local ref to a later event group null', () => {
+    const p = buildPayload([ev.update(local(1), 0, new Map()), ev.create(0, C, null)], [ctrl]);
+    expect(replay([txIn({ hash: T(1), h: 10, payload: p, rs: ALL })]).verdicts[0]).toMatchObject({ valid: false, group: null, subject: null });
   });
 });

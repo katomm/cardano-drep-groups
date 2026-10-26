@@ -1,4 +1,7 @@
 // Domain types of the DRep Groups protocol (spec Part A). Hex strings are lowercase.
+import type { Pos } from './position.js';
+
+export type { Pos } from './position.js';
 export type Hex = string;
 export interface EventRef { txHash: Hex; index: number }
 export type RefLike = EventRef | { local: number };
@@ -25,7 +28,7 @@ export interface DecodedPayload { events: DecodedEvent[]; scripts: PublishedScri
 export interface EvalContext { signers: ReadonlySet<Hex>; invalidBefore: bigint | null; invalidHereafter: bigint | null }
 
 export interface TxPosition { txHash: Hex; blockHeight: number; txIndex: number }
-export type Position = TxPosition;
+export type Position = Pos;
 export interface ChainTx extends TxPosition {
   isValid: boolean;
   invalidBefore: bigint | null;    // body field 8
@@ -57,7 +60,12 @@ export interface Instance {
   state: 'pending' | 'active' | 'closed'; reason: InstanceReason | null;
   joinedAt: Position; approvedAt: Position | null; closedAt: Position | null;
 }
-export interface EventVerdict { ref: EventRef; tag: GroupEvent['tag'] | null; valid: boolean; reason: string | null }
+// group and subject are informative attribution, null when the event resolves to no
+// group or instance that exists at its position.
+export interface EventVerdict {
+  ref: EventRef; tag: GroupEvent['tag'] | null; valid: boolean; reason: string | null;
+  at: Pos; group: EventRef | null; subject: Credential | null;
+}
 export interface IgnoredTx { txHash: Hex; reason: 'phase-2 invalid' | 'payload rejected' | 'label repeated' }
 export interface RegistryState {
   groups: GroupState[];

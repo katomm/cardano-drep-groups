@@ -1,9 +1,9 @@
 import { encode } from 'cborg';
 import { describe, expect, it } from 'vitest';
 import { hexToBytes } from '../src/hex.js';
-import { collectKeyHashes, evaluateNativeScript, parseNativeScript } from '../src/nativeScript.js';
+import { collectKeyHashes, evaluateNativeScript, memberScriptWitness, parseNativeScript } from '../src/nativeScript.js';
 import type { EvalContext, NativeScript } from '../src/types.js';
-import { after, allOf, anyOf, before, K, nOfK, scriptBytes, sig } from './helpers.js';
+import { after, allOf, anyOf, before, hashOf, K, keyCred, nOfK, scriptBytes, scriptCred, sig } from './helpers.js';
 
 const ctx = (signers: string[], ib: bigint | null = null, ih: bigint | null = null): EvalContext => ({
   signers: new Set(signers),
@@ -155,5 +155,23 @@ describe('evaluateNativeScript', () => {
   });
   it('collects key hashes in order without duplicates', () => {
     expect(collectKeyHashes(parse(nOfK(1, sig(K(2)), anyOf(sig(K(1)), sig(K(2))))))).toEqual([K(2), K(1)]);
+  });
+});
+
+describe('memberScriptWitness', () => {
+  const member = allOf(sig(K(1)), sig(K(2)));
+  const c = scriptCred(hashOf(member));
+
+  it('takes the witness whose hash is the credential hash and that parses', () => {
+    const other = scriptBytes(sig(K(3)));
+    expect(memberScriptWitness(c, [other, scriptBytes(member)])).toEqual({ script: parse(member), bytes: scriptBytes(member) });
+  });
+
+  it('gives null without a matching witness, for a key credential and for unparsable bytes', () => {
+    expect(memberScriptWitness(c, [scriptBytes(sig(K(3)))])).toBeNull();
+    expect(memberScriptWitness(c, undefined)).toBeNull();
+    expect(memberScriptWitness(keyCred(hashOf(member)), [scriptBytes(member)])).toBeNull();
+    const bad = scriptBytes([9, 1] as never);
+    expect(memberScriptWitness(scriptCred(hashOf([9, 1] as never)), [bad])).toBeNull();
   });
 });

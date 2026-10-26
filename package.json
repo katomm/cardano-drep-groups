@@ -1,6 +1,6 @@
 {
   "name": "drep-groups",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Reference library for the DRep Groups CIP draft: codec, validation and state machine",
   "keywords": [
     "cardano",
@@ -29,6 +29,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./conformance": {
+      "types": "./dist/conformance/index.d.ts",
+      "default": "./dist/conformance/index.js"
     },
     "./vectors/vectors.json": "./vectors/vectors.json"
   },

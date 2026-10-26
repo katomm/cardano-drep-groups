@@ -1,6 +1,7 @@
 import { readHead } from './cborSpan.js';
+import { nativeScriptHash } from './hash.js';
 import { bytesToHex } from './hex.js';
-import type { EvalContext, Hex, NativeScript } from './types.js';
+import type { Credential, EvalContext, Hex, NativeScript } from './types.js';
 
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
@@ -282,4 +283,38 @@ export function collectKeyHashes(s: NativeScript): Hex[] {
   }
 
   return out;
+}
+
+// Counts every script node and the nesting depth, both inclusive of the root
+// (a lone sig is 1 node at depth 1). Explicit stack, so no recursion limit.
+export function scriptComplexity(s: NativeScript): { nodes: number; depth: number } {
+  let nodes = 0;
+  let depth = 0;
+  const stack: { script: NativeScript; depth: number }[] = [{ script: s, depth: 1 }];
+  while (stack.length > 0) {
+    const { script, depth: d } = stack.pop()!;
+    nodes += 1;
+    if (d > depth) depth = d;
+    if (script.type === 'all' || script.type === 'any' || script.type === 'nOfK') {
+      for (const c of script.scripts) stack.push({ script: c, depth: d + 1 });
+    }
+  }
+  return { nodes, depth };
+}
+
+// The member script a DRep registration proves: the first witness script of the reg_drep
+// tx whose hash equals the script credential's hash and that parses. Null for a key
+// credential and for a registration without such a witness (one that satisfied the
+// script through a reference script, for example). Every match has the same hash and so
+// the same bytes, which script of several matches is taken makes no difference.
+export function memberScriptWitness(
+  credential: Credential, witnessScripts: readonly Uint8Array[] | undefined,
+): { script: NativeScript; bytes: Uint8Array } | null {
+  if (credential.kind !== 'script') return null;
+  for (const bytes of witnessScripts ?? []) {
+    if (nativeScriptHash(bytes) !== credential.hash) continue;
+    const script = parseNativeScript(bytes);
+    if (script) return { script, bytes };
+  }
+  return null;
 }
