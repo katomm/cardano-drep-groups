@@ -90,7 +90,7 @@ const freshJoins = (s: Source, batch: number): Fresh => {
 
 interface Shape {
   name: string;
-  // `n` is the multiplier. At 100x the counts are the ones of the load test brief.
+  // `n` is the multiplier. The sizes in the shape names are the ones at 100x.
   build: (n: number) => History;
 }
 

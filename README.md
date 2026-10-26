@@ -86,7 +86,7 @@ DRep registrations and retirements come from `GET /drep_updates`, the position o
 
 ## Incremental indexing
 
-`replay` recomputes everything from all inputs. An indexer with a database can instead call `runEngine` after every sync: it applies only the new label transactions and credential inputs to your `Store`, in steps bounded by a budget, and recovers after rollbacks. `MemoryStore` is a complete in-memory implementation. A store of your own can run the contract checks of `drep-groups/conformance` (`runSchedule` with seeded chains), which compare the engine against `replay`.
+`replay` recomputes everything from all inputs. An indexer with a database can instead call `runEngine` after every sync: it applies only the new label transactions and credential inputs to your `Store`, in steps bounded by a budget, and recovers after rollbacks. `MemoryStore` is a complete in-memory implementation. A store of your own can run the contract checks of `drep-groups/conformance` (`runSchedule` with seeded chains), which compare the engine against `replay`. Ingest and opening a recovery never run while a `runEngine` call is in flight, so serialize them with your runs, for example under the same lease holder.
 
 ```ts
 import { MemoryStore, runEngine } from 'drep-groups';
@@ -115,6 +115,13 @@ while (report.more);
 | `groupIdToBech32(ref)`, `groupIdFromBech32(s)` | display form of a group id, bech32 with prefix `group` |
 | `nativeScriptHash(bytes)`, `keyHashOfVkey(vkey)` | Cardano hashes |
 | `refKey(ref)`, `credKey(credential)`, `orderInputs(inputs)` | helpers for keys and ordering |
+| `runEngine(store, budget, lease, opts?)` | one bounded incremental run over a `Store`: an open recovery, or new label transactions and credential inputs |
+| `MemoryStore` | complete in-memory `Store`, with ingest hooks, frontiers, a lease and `snapshot()` |
+| `effectiveClose(instance, dissolveAt, firstUnregAfterJoin, q?)` | when and why a membership ends: explicit close, dissolve or retirement, whichever comes first |
+| `comparePos(a, b)`, `endOf(height)`, `posOfCert(input)`, `posOfScripts(tx)`, `posOfEvent(tx, index)` | total order of certificates, payload scripts and events |
+| `scriptComplexity(script)` | node count and nesting depth of a native script, counted the way the payload limits count them |
+| `memberScriptWitness(credential, witnessScripts)` | the member script a script DRep's registration proves, `null` when no witness matches |
+| `drep-groups/conformance` | `generateChain`, `generateSchedule` and `runSchedule`: contract checks of a `Store` against `replay` |
 
 All types are exported, among them `ChainTx`, `LedgerInput`, `ChainInput`, `GroupState`, `Instance`, `EventVerdict` and `RegistryState`.
 

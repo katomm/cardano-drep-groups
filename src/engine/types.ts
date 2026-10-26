@@ -15,6 +15,8 @@ export interface Keys {
   scriptsAt: Array<[Hex, Pos]>;
   credentialAt: Array<[Credential, Pos]>;         // registered?, member script, first unreg after
 }
+// Registration and first unreg answers come from the raw ledger rows, applied or not,
+// member scripts only from rows a unit has applied.
 export interface View {
   scriptAt(hash: Hex, at: Pos): NativeScript | null;
   groupAt(group: EventRef, at: Pos): GroupVersion | null;
@@ -26,7 +28,7 @@ export interface View {
   latestInstance(group: EventRef, c: Credential): StoredInstance | null;
   missing(keys: Keys): Keys;                       // keys the view was not loaded for
 }
-export type AttributedVerdict = EventVerdict; // carries at, group and subject since Task 2
+export type AttributedVerdict = EventVerdict; // every verdict carries at, group and subject
 export interface QueuedEvent { subject: Credential; at: Pos; group: EventRef | null; txHash: Hex; event: DecodedEvent }
 export interface TxContext { signers: Hex[]; requiredSigners: Hex[]; invalidBefore: bigint | null; invalidHereafter: bigint | null }
 export type CredentialInput = { kind: 'event'; q: QueuedEvent; tx: TxContext } | { kind: 'ledger'; at: Pos; input: LedgerInput };
