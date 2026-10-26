@@ -21,13 +21,17 @@ describe('incremental engine against replay', () => {
       }
     }
     if (process.env.ENGINE_COVERAGE) console.log(JSON.stringify(cov, null, 1));
-    for (const reason of ALL_REASONS) expect(cov.reasons[reason] ?? 0, reason).toBeGreaterThanOrEqual(20);
+    // Thresholds are shares of the schedule count, so a smaller or larger ENGINE_SEEDS
+    // keeps them meaningful. At 200 seeds they are 20 distinct results per reason,
+    // 150 schedules with G behind L and 40 cut checks.
+    const n = cov.schedules;
+    for (const reason of ALL_REASONS) expect(cov.reasons[reason] ?? 0, reason).toBeGreaterThanOrEqual(0.1 * n);
     for (const c of ['left', 'removed', 'retired', 'dissolved', 'tie:unreg-before-dissolve', 'tie:leave-before-dissolve']) {
       expect(cov.closes[c] ?? 0, c).toBeGreaterThan(0);
     }
-    expect(cov.schedulesWithGBehindL).toBeGreaterThan(50);
+    expect(cov.schedulesWithGBehindL).toBeGreaterThan(0.75 * n);
     expect(cov.completedAfterRollback).toBeGreaterThan(0);
-    expect(cov.cutChecks).toBeGreaterThanOrEqual(40);
+    expect(cov.cutChecks).toBeGreaterThanOrEqual(0.2 * n);
     expect(cov.rebuildsMidway).toBeGreaterThan(0);
     expect(cov.validShare).toBeGreaterThan(0.3);
   }, 300_000);
