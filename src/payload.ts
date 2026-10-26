@@ -1,11 +1,17 @@
 import { arrayItemOffsets, itemEnd, mapEntryOffsets, readHead } from './cborSpan.js';
 import { nativeScriptHash } from './hash.js';
 import { bytesToHex, concatBytes } from './hex.js';
-import { parseNativeScript } from './nativeScript.js';
+import { parseNativeScript, scriptComplexity } from './nativeScript.js';
 import type { Anchor, Credential, DecodedEvent, DecodedPayload, GroupEvent, PublishedScript, RefLike, UpdateChanges } from './types.js';
 
 export const GROUPS_LABEL = 8416;
 const MAX_CHUNK = 64n;
+// Spec A2 limits: events per payload, published script entries per payload,
+// and nodes and depth of one published script.
+export const MAX_EVENTS_PER_PAYLOAD = 64;
+export const MAX_SCRIPT_ENTRIES = 8;
+export const MAX_SCRIPT_NODES = 64;
+export const MAX_SCRIPT_DEPTH = 8;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
 // All readers below work on offsets into the payload bytes. decodePayload
@@ -168,10 +174,11 @@ function decodeEvent(b: Uint8Array, off: number): GroupEvent | string {
 }
 
 // Spec A2 layer 2: each entry is an array of definite byte strings of at most
-// 64 bytes, concatenated. Entries that do not fit or do not parse are skipped.
+// 64 bytes, concatenated. Entries that do not fit, do not parse or exceed the
+// node or depth limit are skipped. More than 8 entries ignore key 2 as a whole.
 function decodeScripts(b: Uint8Array, off: number): PublishedScript[] {
   const entries = arrayAt(b, off);
-  if (!entries) return [];
+  if (!entries || entries.length > MAX_SCRIPT_ENTRIES) return [];
   const out: PublishedScript[] = [];
   for (const e of entries) {
     const chunks = arrayAt(b, e);
@@ -180,7 +187,10 @@ function decodeScripts(b: Uint8Array, off: number): PublishedScript[] {
     if (!parts.every((p): p is Uint8Array => p !== null && BigInt(p.length) <= MAX_CHUNK)) continue;
     const bytes = concatBytes(parts);
     const script = parseNativeScript(bytes);
-    if (script) out.push({ hash: nativeScriptHash(bytes), bytes, script });
+    if (!script) continue;
+    const { nodes, depth } = scriptComplexity(script);
+    if (nodes > MAX_SCRIPT_NODES || depth > MAX_SCRIPT_DEPTH) continue;
+    out.push({ hash: nativeScriptHash(bytes), bytes, script });
   }
   return out;
 }
@@ -209,7 +219,7 @@ export function decodePayload(bytes: Uint8Array): DecodedPayload | null {
     }
     if (uintAt(bytes, fields.get('u0')) !== 1n) return null;
     const events = arrayAt(bytes, fields.get('u1'));
-    if (!events || events.length === 0) return null;
+    if (!events || events.length === 0 || events.length > MAX_EVENTS_PER_PAYLOAD) return null;
     const scriptsOff = fields.get('u2');
     const scripts = scriptsOff === undefined ? [] : decodeScripts(bytes, scriptsOff);
     const decoded: DecodedEvent[] = events.map((e) => {

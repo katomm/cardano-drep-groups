@@ -283,3 +283,20 @@ export function collectKeyHashes(s: NativeScript): Hex[] {
 
   return out;
 }
+
+// Counts every script node and the nesting depth, both inclusive of the root
+// (a lone sig is 1 node at depth 1). Explicit stack, so no recursion limit.
+export function scriptComplexity(s: NativeScript): { nodes: number; depth: number } {
+  let nodes = 0;
+  let depth = 0;
+  const stack: { script: NativeScript; depth: number }[] = [{ script: s, depth: 1 }];
+  while (stack.length > 0) {
+    const { script, depth: d } = stack.pop()!;
+    nodes += 1;
+    if (d > depth) depth = d;
+    if (script.type === 'all' || script.type === 'any' || script.type === 'nOfK') {
+      for (const c of script.scripts) stack.push({ script: c, depth: d + 1 });
+    }
+  }
+  return { nodes, depth };
+}
