@@ -64,7 +64,8 @@ const fail = (reason: Reason, group: EventRef | null = null, subject: Credential
 const ok = (group: EventRef | null, subject: Credential | null, write: RuleWrite): RuleResult =>
   ({ reason: null, group, subject, writes: [write] });
 
-function resolve(r: RefLike, self: EventRef): EventRef | null {
+// A local ref resolves within the tx and only to an earlier event, an explicit ref is taken as is.
+export function resolve(r: RefLike, self: EventRef): EventRef | null {
   if ('local' in r) return r.local < self.index ? { txHash: self.txHash, index: r.local } : null;
   return r;
 }
