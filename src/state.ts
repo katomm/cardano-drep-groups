@@ -1,14 +1,13 @@
 import { nativeScriptHash } from './hash.js';
-import { collectKeyHashes, evaluateNativeScript, parseNativeScript } from './nativeScript.js';
+import type { CloseReason } from './effective.js';
+import { parseNativeScript } from './nativeScript.js';
 import { decodePayload } from './payload.js';
-import { posOfCert, posOfEvent } from './position.js';
+import { comparePos, type Pos, posOfCert, posOfEvent, posOfScripts } from './position.js';
+import { eventRule, type GroupVersion, type RuleWorld, type RuleWrite, type StoredInstance } from './rules.js';
 import type {
-  ChainInput, ChainTx, Credential, EvalContext, EventRef, EventVerdict, GroupEvent, GroupState,
-  Hex, IgnoredTx, Instance, InstanceReason, LedgerInput, NativeScript, Position, RefLike, RegistryState,
+  ChainInput, ChainTx, Credential, EvalContext, EventRef, EventVerdict, GroupState,
+  Hex, IgnoredTx, Instance, LedgerInput, NativeScript, RegistryState,
 } from './types.js';
-
-// Group and subject of an event verdict, filled while the event is checked.
-interface Attribution { group: EventRef | null; subject: Credential | null }
 
 export const refKey = (r: EventRef): string => `${r.txHash}#${r.index}`;
 export const credKey = (c: Credential): string => `${c.kind}:${c.hash}`;
@@ -34,15 +33,66 @@ export function orderInputs(inputs: readonly ChainInput[]): ChainInput[] {
   });
 }
 
-class Engine {
-  groups = new Map<string, GroupState>();
-  instances = new Map<string, Instance>();
-  openByMember = new Map<string, string>(); // group key + credential key to join key
+// The world of replay: every input is applied in chain order, a dissolve or an unreg
+// closes the affected instances at once, so instanceAt returns that eager close.
+class EagerWorld implements RuleWorld {
+  groups = new Map<string, GroupVersion>();
+  instances = new Map<string, { inst: StoredInstance; close: { at: Pos; reason: CloseReason } | null }>();
+  latestBySlot = new Map<string, string>(); // group key + credential key to the latest join key
   registered = new Set<string>();
-  scripts = new Map<Hex, NativeScript>();
+  scripts = new Map<Hex, { at: Pos; script: NativeScript }>();
   memberScripts = new Map<Hex, NativeScript>();
   verdicts: EventVerdict[] = [];
   ignored: IgnoredTx[] = [];
+
+  scriptAt(hash: Hex, at: Pos): NativeScript | null {
+    const s = this.scripts.get(hash);
+    return s && comparePos(s.at, at) <= 0 ? s.script : null;
+  }
+
+  groupAt(group: EventRef, at: Pos): GroupVersion | null {
+    const g = this.groups.get(refKey(group));
+    return g && comparePos(g.at, at) <= 0 ? g : null;
+  }
+
+  registeredAt(c: Credential): boolean {
+    return this.registered.has(credKey(c));
+  }
+
+  memberScriptAt(c: Credential): NativeScript | null {
+    return c.kind === 'script' ? (this.memberScripts.get(c.hash) ?? null) : null;
+  }
+
+  instanceAt(join: EventRef, at: Pos): { inst: StoredInstance; close: { at: Pos; reason: CloseReason } | null } | null {
+    const x = this.instances.get(refKey(join));
+    return x && comparePos(x.inst.joinedAt, at) < 0 ? x : null;
+  }
+
+  openSlotAt(group: EventRef, c: Credential, at: Pos): StoredInstance | null {
+    const key = this.latestBySlot.get(`${refKey(group)}|${credKey(c)}`);
+    const x = key === undefined ? undefined : this.instances.get(key);
+    return x && x.close === null && comparePos(x.inst.joinedAt, at) < 0 ? x.inst : null;
+  }
+
+  apply(w: RuleWrite): void {
+    if (w.kind === 'version') {
+      const v = w.version;
+      const before = this.groups.get(refKey(v.id));
+      this.groups.set(refKey(v.id), v);
+      if (v.status === 'dissolved' && before?.status !== 'dissolved') {
+        for (const x of this.instances.values()) {
+          if (x.close === null && refKey(x.inst.group) === refKey(v.id)) x.close = { at: v.at, reason: 'dissolved' };
+        }
+      }
+      return;
+    }
+    const inst = w.instance;
+    const key = refKey(inst.joinId);
+    const prev = this.instances.get(key);
+    const close = inst.closedAt !== null && inst.closeReason !== null ? { at: inst.closedAt, reason: inst.closeReason } : null;
+    this.instances.set(key, { inst, close: prev?.close ?? close });
+    if (!prev) this.latestBySlot.set(`${refKey(inst.group)}|${credKey(inst.member)}`, key);
+  }
 
   ledger(l: LedgerInput): void {
     const ck = credKey(l.credential);
@@ -59,8 +109,8 @@ class Engine {
       return;
     }
     this.registered.delete(ck);
-    for (const inst of this.instances.values()) {
-      if (inst.state !== 'closed' && credKey(inst.member) === ck) this.close(inst, 'retired', at);
+    for (const x of this.instances.values()) {
+      if (x.close === null && credKey(x.inst.member) === ck) x.close = { at, reason: 'retired' };
     }
   }
 
@@ -79,7 +129,8 @@ class Engine {
       this.ignored.push({ txHash: t.txHash, reason: 'payload rejected' });
       return;
     }
-    for (const s of p.scripts) if (!this.scripts.has(s.hash)) this.scripts.set(s.hash, s.script);
+    const scriptsAt = posOfScripts(t);
+    for (const s of p.scripts) if (!this.scripts.has(s.hash)) this.scripts.set(s.hash, { at: scriptsAt, script: s.script });
     const ctx: EvalContext = {
       signers: new Set([...t.requiredSigners, ...t.witnessKeyHashes]),
       invalidBefore: t.invalidBefore,
@@ -93,163 +144,28 @@ class Engine {
         this.verdicts.push({ ref, tag: null, valid: false, reason: d.reason, at, group: null, subject: null });
         return;
       }
-      const attr: Attribution = { group: null, subject: null };
-      const reason = this.event(d.event, ref, ctx, required, at, attr);
-      this.verdicts.push({ ref, tag: d.event.tag, valid: reason === null, reason, at, ...attr });
+      const r = eventRule(this, d.event, ref, ctx, required, at);
+      for (const w of r.writes) this.apply(w);
+      this.verdicts.push({ ref, tag: d.event.tag, valid: r.reason === null, reason: r.reason, at, group: r.group, subject: r.subject });
     });
   }
 
-  resolve(r: RefLike, self: EventRef): EventRef | null {
-    if ('local' in r) return r.local < self.index ? { txHash: self.txHash, index: r.local } : null;
-    return r;
-  }
-
-  policy(hash: Hex | null, ctx: EvalContext): boolean {
-    const s = hash ? this.scripts.get(hash) : undefined;
-    return s !== undefined && evaluateNativeScript(s, ctx);
-  }
-
-  keysOf(...hashes: Array<Hex | null | undefined>): Hex[] {
-    const out: Hex[] = [];
-    for (const h of hashes) {
-      const s = h ? this.scripts.get(h) : undefined;
-      if (s) for (const k of collectKeyHashes(s)) if (!out.includes(k)) out.push(k);
-    }
-    return out;
-  }
-
-  memberAuthorized(c: Credential, ctx: EvalContext, required: ReadonlySet<Hex>): string | null {
-    if (c.kind === 'key') return required.has(c.hash) ? null : 'member key not in required_signers';
-    const s = this.scripts.get(c.hash) ?? this.memberScripts.get(c.hash);
-    if (!s) return 'member script unresolved';
-    return evaluateNativeScript(s, ctx) ? null : 'member script not satisfied';
-  }
-
-  close(inst: Instance, reason: InstanceReason, at: Position): void {
-    inst.state = 'closed';
-    inst.reason = reason;
-    inst.closedAt = at;
-    this.openByMember.delete(`${refKey(inst.group)}|${credKey(inst.member)}`);
-  }
-
-  event(e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Position, attr: Attribution): string | null {
-    if (e.tag === 'create') {
-      if (!this.scripts.has(e.control)) return 'control policy unresolved';
-      if (e.admission !== null && !this.scripts.has(e.admission)) return 'admission policy unresolved';
-      if (!this.policy(e.control, ctx)) return 'control policy not satisfied';
-      // Spec A4 consent rule: every listed key signed the create.
-      if (this.keysOf(e.control, e.admission).some((k) => !ctx.signers.has(k))) return 'listed key did not sign';
-      this.groups.set(refKey(self), {
-        id: self, mode: e.mode, control: e.control, admission: e.admission, profile: e.profile,
-        seq: 0n, status: 'active', createdAt: at, profileSetAt: e.profile ? at : null,
-      });
-      attr.group = self;
-      return null;
-    }
-    if (e.tag === 'update' || e.tag === 'dissolve') {
-      const gref = this.resolve(e.group, self);
-      if (!gref) return 'local reference must point to an earlier event';
-      const g = this.groups.get(refKey(gref));
-      if (!g) return 'unknown group';
-      attr.group = g.id;
-      if (g.status === 'dissolved') return 'group dissolved';
-      if (e.seq !== g.seq) return 'stale seq';
-      if (!this.policy(g.control, ctx)) return 'control policy not satisfied';
-      if (e.tag === 'dissolve') {
-        g.status = 'dissolved';
-        for (const inst of this.instances.values()) {
-          if (inst.state !== 'closed' && refKey(inst.group) === refKey(g.id)) this.close(inst, 'dissolved', at);
-        }
-        return null;
-      }
-      const c = e.changes;
-      if (c.control !== undefined && !this.scripts.has(c.control)) return 'new control policy unresolved';
-      if (c.admission !== undefined) {
-        if (g.mode === 'open') return 'open group has no admission policy';
-        if (!this.scripts.has(c.admission)) return 'new admission policy unresolved';
-      }
-      // Spec A4 consent rule: keys that the current policies do not list must sign.
-      const current = new Set(this.keysOf(g.control, g.admission));
-      const added = this.keysOf(c.control, c.admission).filter((k) => !current.has(k));
-      if (added.some((k) => !ctx.signers.has(k))) return 'newly listed key did not sign';
-      if (c.control !== undefined) g.control = c.control;
-      if (c.admission !== undefined) g.admission = c.admission;
-      if (c.profile !== undefined) {
-        g.profile = c.profile;
-        g.profileSetAt = at;
-      }
-      g.seq += 1n;
-      return null;
-    }
-    return this.membership(e, self, ctx, required, at, attr);
-  }
-
-  membership(e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Position, attr: Attribution): string | null {
-    if (e.tag === 'join') {
-      attr.subject = e.member;
-      const gref = this.resolve(e.group, self);
-      if (!gref) return 'local reference must point to an earlier event';
-      const g = this.groups.get(refKey(gref));
-      if (!g) return 'unknown group';
-      attr.group = g.id;
-      if (g.status === 'dissolved') return 'group dissolved';
-      const auth = this.memberAuthorized(e.member, ctx, required);
-      if (auth) return auth;
-      if (!this.registered.has(credKey(e.member))) return 'not a registered DRep';
-      const slot = `${refKey(g.id)}|${credKey(e.member)}`;
-      if (this.openByMember.has(slot)) return 'already a member or applicant';
-      this.instances.set(refKey(self), {
-        joinId: self, group: g.id, member: e.member,
-        state: g.mode === 'open' ? 'active' : 'pending', reason: null,
-        joinedAt: at, approvedAt: null, closedAt: null,
-      });
-      this.openByMember.set(slot, refKey(self));
-      return null;
-    }
-    if (e.tag !== 'approve' && e.tag !== 'leave' && e.tag !== 'remove') return 'unknown event';
-    const jref = this.resolve(e.join, self);
-    if (!jref) return 'local reference must point to an earlier event';
-    const inst = this.instances.get(refKey(jref));
-    if (!inst) return 'unknown join';
-    attr.group = inst.group;
-    attr.subject = inst.member;
-    const g = this.groups.get(refKey(inst.group));
-    if (!g) return 'unknown group';
-    if (e.tag === 'leave') {
-      if (inst.state === 'closed') return 'join is not open';
-      const auth = this.memberAuthorized(inst.member, ctx, required);
-      if (auth) return auth;
-      this.close(inst, 'left', at);
-      return null;
-    }
-    if (g.mode === 'open') return e.tag === 'remove' ? 'open group has no remove' : 'open group has no approval';
-    if (e.tag === 'approve') {
-      if (inst.state !== 'pending') return 'join is not pending';
-      if (g.status === 'dissolved') return 'group dissolved';
-      if (!this.policy(g.admission, ctx)) return 'admission policy not satisfied';
-      inst.state = 'active';
-      inst.approvedAt = at;
-      return null;
-    }
-    if (inst.state === 'closed') return 'join is not open';
-    if (!this.policy(g.admission, ctx)) return 'admission policy not satisfied';
-    this.close(inst, 'removed', at);
-    return null;
-  }
-
   result(): RegistryState {
-    return {
-      groups: [...this.groups.values()],
-      instances: [...this.instances.values()],
-      verdicts: this.verdicts,
-      ignored: this.ignored,
-      scripts: this.scripts,
-    };
+    const groups: GroupState[] = [...this.groups.values()].map(({ at: _at, ...g }) => g);
+    const instances: Instance[] = [...this.instances.values()].map(({ inst, close }) => ({
+      joinId: inst.joinId, group: inst.group, member: inst.member,
+      state: close ? 'closed' : inst.mode === 'open' || inst.approvedAt !== null ? 'active' : 'pending',
+      reason: close ? close.reason : null,
+      joinedAt: inst.joinedAt, approvedAt: inst.approvedAt, closedAt: close ? close.at : null,
+    }));
+    const scripts = new Map<Hex, NativeScript>();
+    for (const [hash, s] of this.scripts) scripts.set(hash, s.script);
+    return { groups, instances, verdicts: this.verdicts, ignored: this.ignored, scripts };
   }
 }
 
 export function replay(inputs: readonly ChainInput[]): RegistryState {
-  const engine = new Engine();
+  const engine = new EagerWorld();
   for (const x of orderInputs(inputs)) {
     if (x.kind === 'tx') engine.tx(x.tx);
     else engine.ledger(x.input);
