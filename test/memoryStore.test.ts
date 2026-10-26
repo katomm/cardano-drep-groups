@@ -176,6 +176,18 @@ describe('MemoryStore ingest', () => {
     const view = await s.load(keys, []);
     expect(view.missing(keys).credentialAt).toEqual([]);
     expect(view.registeredAt(M7, joinAt)).toBe(true);
+    // The first unreg after the join comes from rows not yet applied as well, an unreg
+    // at or below the queried position is never returned.
+    s.ingestLedgerRow(unreg(M7, T(0xa8), 15));
+    s.ingestLedgerRow(unreg(M7, T(0xa9), 25));
+    s.ingestLedgerRow(unreg(M7, T(0xaa), 27));
+    const later = await s.load(keys, []);
+    expect(later.registeredAt(M7, joinAt)).toBe(true);
+    expect(later.firstUnregAfter(M7, joinAt)).toEqual(posOfCert(unreg(M7, T(0xa9), 25)));
+    const at25 = posOfCert(unreg(M7, T(0xa9), 25));
+    const k25 = { ...emptyKeys(), credentialAt: [[M7, at25]] as Array<[Credential, Pos]> };
+    expect((await s.load(k25, [])).firstUnregAfter(M7, at25)).toEqual(posOfCert(unreg(M7, T(0xaa), 27)));
+    expect(s.snapshot().appliedThrough).toEqual([]);
     const units = await credentialUnits(s);
     expect(units[0]?.change.verdicts.map((v) => [v.tag, v.valid, v.reason])).toEqual([['join', true, null]]);
   });
@@ -396,6 +408,40 @@ describe('MemoryStore truncation', () => {
   });
 });
 
+describe('MemoryStore step budgets', () => {
+  const sweep = async (step: (s: MemoryStore, budget: number, lease: string) => Promise<'more' | 'done'>) => {
+    const one = await applied();
+    expect(await step(one.s, 1_000_000, one.lease)).toBe('done');
+    const expected = withoutStats(one.s.snapshot());
+    let maxSteps = 0;
+    for (let budget = 1; budget <= 40; budget++) {
+      const { s } = await applied();
+      let lease = s.acquireLease('test');
+      let steps = 0;
+      while ((await step(s, budget, lease)) === 'more') {
+        steps++;
+        if (budget === 3 && steps === 2) {
+          // A lease lost between two steps: the next owner resumes the same work list.
+          s.expireLease();
+          await expect(step(s, budget, lease)).rejects.toBeInstanceOf(LeaseLostError);
+          lease = s.acquireLease('next');
+        }
+      }
+      maxSteps = Math.max(maxSteps, steps);
+      expect(withoutStats(s.snapshot())).toEqual(expected);
+    }
+    expect(maxSteps).toBeGreaterThan(10); // budget 1 really takes many steps
+  };
+
+  it('truncateStep gives the one shot state for every budget', async () => {
+    await sweep((s, b, l) => s.truncateStep(35, b, l));
+  });
+
+  it("resetStep('rebuild') gives the one shot state for every budget", async () => {
+    await sweep((s, b, l) => s.resetStep('rebuild', b, l));
+  });
+});
+
 describe('MemoryStore recovery', () => {
   it('a truncation opened during a rebuild runs after it', async () => {
     const { s, lease } = await applied();
@@ -470,6 +516,18 @@ describe('MemoryStore readyCredentials', () => {
     const next = await s.readyCredentials(10, 2, { G: f.G, R: f.R });
     expect(next[0]?.inputs.map(posOfInput).map((p) => p.blockHeight)).toEqual([7]);
     expect(next[0]?.more).toBe(false);
+  });
+
+  it('readyCredentials cuts the second credential at the shared input budget', async () => {
+    const { s } = fresh();
+    s.ingestLedgerRow(reg(M7, T(0xa1), 5));
+    s.ingestLedgerRow(reg(M9, T(0xa2), 6));
+    s.ingestLedgerRow(unreg(M9, T(0xa3), 7));
+    s.ingestLedgerRow(reg(M9, T(0xa4), 8));
+    const page = await s.readyCredentials(10, 3, { G: endOf(10), R: null });
+    expect(page.map((r) => [r.c, r.inputs.map(posOfInput).map((p) => p.blockHeight), r.more])).toEqual([
+      [M7, [5], false], [M9, [6, 7], true],
+    ]);
   });
 
   it('readyCredentials skips an incomplete old credential for a complete young one', async () => {

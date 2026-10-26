@@ -387,7 +387,9 @@ export class MemoryStore implements Store {
 
   // Runs up to `budget` row operations (at least one) and lowers the frontiers in the step
   // that finishes. The work list is derived from what remains, so a step interrupted
-  // anywhere is resumed by the next call with the same `above`.
+  // anywhere is resumed by the next call with the same `above`. Raw rows ingested above
+  // `above` while the truncation is open are deleted by the next step, the readers
+  // deliver them again after the cut.
   async truncateStep(above: number, budget: number, lease: string): Promise<'more' | 'done'> {
     this.checkLease(lease);
     const ops = this.truncateOps(above);
