@@ -21,6 +21,31 @@ describe('routeTx', () => {
     expect(r.events.map((e) => [e.plane, e.subject])).toEqual([['membership', key(1)], ['membership', key(1)]]);
     expect(r.events[1]!.at).toMatchObject({ blockHeight: 100, txIndex: 3, txHash: T(1), phase: 2, index: 1 });
     expect(r.events[1]!.ref).toEqual({ txHash: T(1), index: 1 });
+    expect(r.events.map((e) => e.group)).toEqual([group, group]);
+  });
+
+  it('carries the resolved group of the join on approve, leave and remove', () => {
+    // A join naming a group created earlier in the same tx resolves against the join's own tx.
+    const local = ok({ tag: 'join', group: { local: 0 }, member: key(1) });
+    const create = ok({ tag: 'create', mode: 'permissioned', control: K(1), admission: K(2), profile: null });
+    const own = { txHash: T(1), index: 0 };
+    const r = routeTx(tx, payload(
+      create, local,
+      ok({ tag: 'approve', join: { local: 1 } }),
+      ok({ tag: 'leave', join: { txHash: T(1), index: 1 } }),
+      ok({ tag: 'remove', join: { txHash: T(2), index: 4 } }),
+    ), () => ok({ tag: 'join', group: { local: 1 }, member: key(3) }));
+    expect(r.events.map((e) => [e.plane, e.group])).toEqual([
+      ['control', null], ['membership', own], ['membership', own], ['membership', own],
+      // The queued join's local group ref resolves against the queued join's tx.
+      ['membership', { txHash: T(2), index: 1 }],
+    ]);
+  });
+
+  it('gives a join with an unresolvable group and its approve a null group', () => {
+    const bad = ok({ tag: 'join', group: { local: 0 }, member: key(1) }); // refers to itself
+    const r = routeTx(tx, payload(bad, ok({ tag: 'approve', join: { local: 0 } })), none);
+    expect(r.events.map((e) => [e.plane, e.subject, e.group])).toEqual([['membership', key(1), null], ['membership', key(1), null]]);
   });
 
   it("routes a ref to a queued join of another tx to its member", () => {
@@ -30,13 +55,13 @@ describe('routeTx', () => {
       return join(script(5));
     });
     expect(asked).toEqual([{ txHash: T(2), index: 4 }]);
-    expect(r.events[0]).toMatchObject({ plane: 'membership', subject: script(5) });
+    expect(r.events[0]).toMatchObject({ plane: 'membership', subject: script(5), group });
   });
 
   it('treats ignored and null alike as orphan', () => {
     const p = payload(ok({ tag: 'remove', join: { txHash: T(2), index: 0 } }));
     for (const answer of ['ignored', null] as const) {
-      expect(routeTx(tx, p, () => answer).events[0]).toMatchObject({ plane: 'orphan', subject: null });
+      expect(routeTx(tx, p, () => answer).events[0]).toMatchObject({ plane: 'orphan', subject: null, group: null });
     }
     // A queued entry that is not a join is an orphan as well.
     const create = ok({ tag: 'create', mode: 'open', control: K(1), admission: null, profile: null });

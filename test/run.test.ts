@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type EngineSnapshot, MemoryStore } from '../src/engine/memoryStore.js';
+import { MemoryStore, type MemoryStoreSnapshot } from '../src/engine/memoryStore.js';
 import { runEngine } from '../src/engine/run.js';
 import { type Budget, type ChangeSet, type CursorUpdate, type Keys, LeaseLostError, type RunReport, type View } from '../src/engine/types.js';
 import { afterTx, endOf, posOfCert, posOfEvent } from '../src/position.js';
@@ -13,7 +13,7 @@ const budget = (o: Partial<Budget> = {}): Budget => ({ ...BIG, ...o });
 
 const fresh = (s = new MemoryStore({})) => ({ s, lease: s.acquireLease('test') });
 const commits = (s: MemoryStore): number => s.stats.calls.commit ?? 0;
-const withoutStats = ({ stats: _stats, ...rest }: EngineSnapshot) => rest;
+const withoutStats = ({ stats: _stats, ...rest }: MemoryStoreSnapshot) => rest;
 
 type Observed = { ref: { txHash: string; index: number }; tag: string | null; valid: boolean; reason: string | null };
 
@@ -118,6 +118,51 @@ describe('runEngine recovery', () => {
     const { frontiers: _g, ...after } = withoutStats(s.snapshot());
     expect(after).toEqual(before); // nothing of the chain lies above the cut
     expect(s.snapshot().frontiers).toEqual({ L: 25, R: 25, G: endOf(25) });
+  });
+});
+
+describe('runEngine recovery merged during a step', () => {
+  // The Store contract forbids ingest while a run is in flight. This store breaks it on
+  // purpose: a late tx arrives after the truncation step reported done and before the run
+  // finishes the recovery, so the first slot is merged to a lower cut in between.
+  class LateIngestStore extends MemoryStore {
+    late: ChainTx | null = null;
+    override async truncateStep(above: number, budget: number, lease: string): Promise<'more' | 'done'> {
+      const step = await super.truncateStep(above, budget, lease);
+      if (step === 'done' && this.late) {
+        this.ingestLabelTx(this.late);
+        this.late = null;
+      }
+      return step;
+    }
+  }
+
+  it('keeps a truncation merged after the step and applies the late tx', async () => {
+    const s = new LateIngestStore({});
+    const lease = s.acquireLease('test');
+    s.ingestLedgerRow(reg(M7, T(0xa1), 5));
+    s.ingestLedgerRow(reg(M9, T(0xa2), 5));
+    s.ingestLabelTx(create);
+    s.ingestLabelTx(join7(30));
+    s.setFrontiers({ L: 40, R: 40 });
+    await runUntilDone(s, lease);
+
+    const join9 = chainTx({ hash: T(0x21), h: 20, rs: [K(9)], payload: buildPayload([ev.join(G1, 'key', K(9))]) });
+    s.late = join9;
+    await s.openRecovery({ kind: 'truncate', above: 25 }, lease);
+    const r = await runEngine(s, BIG, lease);
+    expect(r).toMatchObject({ phase: 'recovery', recovery: { kind: 'truncate', above: 25 } });
+    // The late tx at 20 merged the slot to a cut above 19, finishing the old step keeps it.
+    expect(await s.pendingRecovery()).toEqual({ kind: 'truncate', above: 19 });
+    while ((await s.pendingRecovery()) !== null) await runEngine(s, BIG, lease);
+
+    // The readers deliver again after the cut, as they do after every truncation.
+    s.ingestLabelTx(join7(30));
+    s.ingestLabelTx(join9);
+    s.setFrontiers({ L: 40, R: 40 });
+    await runUntilDone(s, lease);
+    expect(s.snapshot().instances.map((i) => i.joinId.txHash).sort()).toEqual([T(0x20), T(0x21)].sort());
+    expect(verdictOf(s, T(0x21))).toMatchObject([{ tag: 'join', valid: true }]);
   });
 });
 

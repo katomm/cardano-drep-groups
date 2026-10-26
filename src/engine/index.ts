@@ -5,5 +5,5 @@ export { routeTx } from './route.js';
 export { LazyWorld, stageKeys, type Step } from './lazyWorld.js';
 export { applyControl, type RuleObserver, txContextOf } from './control.js';
 export { applyCredential } from './credential.js';
-export { type EngineSnapshot, MemoryStore } from './memoryStore.js';
+export { type EngineSnapshot, MemoryStore, type MemoryStoreSnapshot } from './memoryStore.js';
 export { type RunOptions, runEngine } from './run.js';

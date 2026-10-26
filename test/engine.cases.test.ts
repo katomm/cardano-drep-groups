@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { assertEquivalent, engineProjection, replayProjection, runSchedule, type ScheduleResult, type ScheduleStep } from '../src/conformance/index.js';
 import { BIG_BUDGET } from '../src/conformance/generate.js';
-import { type EngineSnapshot, MemoryStore } from '../src/engine/memoryStore.js';
+import { type EngineSnapshot, MemoryStore, type MemoryStoreSnapshot } from '../src/engine/memoryStore.js';
 import type { Budget, ReadyCredential } from '../src/engine/types.js';
 import { endOf, type Pos, posOfCert, posOfEvent, posOfScripts } from '../src/position.js';
 import { credKey, refKey, replay } from '../src/state.js';
@@ -63,10 +63,11 @@ const inputsOf = (steps: ScheduleStep[]): ChainInput[] =>
 const go = (steps: ScheduleStep[], store: () => MemoryStore = () => new MemoryStore()): Promise<ScheduleResult> =>
   runSchedule(store, inputsOf(steps), steps);
 
-const at = (r: ScheduleResult, label: string): EngineSnapshot => {
+// Every case runs on a MemoryStore, so its checkpoints carry the recovery slots as well.
+const at = (r: ScheduleResult, label: string): MemoryStoreSnapshot => {
   const c = r.checkpoints.find((x) => x.label === label);
   if (!c) throw new Error(`no checkpoint ${label}`);
-  return c.snapshot;
+  return c.snapshot as MemoryStoreSnapshot;
 };
 const verdict = (snap: EngineSnapshot, tx: number, index = 0): EventVerdict | undefined =>
   engineProjection(snap).verdicts.find((v) => v.ref.txHash === T(tx) && v.ref.index === index);

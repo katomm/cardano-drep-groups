@@ -3,7 +3,7 @@ import { foreignJoinRefs } from '../src/engine/classify.js';
 import { applyControl } from '../src/engine/control.js';
 import { applyCredential } from '../src/engine/credential.js';
 import { emptyChangeSet, emptyKeys, stageKeys, type Step } from '../src/engine/lazyWorld.js';
-import { type EngineSnapshot, MemoryStore } from '../src/engine/memoryStore.js';
+import { MemoryStore, type MemoryStoreSnapshot } from '../src/engine/memoryStore.js';
 import { routeTx } from '../src/engine/route.js';
 import { type ChangeSet, type CursorUpdate, type CredentialInput, LeaseLostError, type View } from '../src/engine/types.js';
 import { decodePayload } from '../src/payload.js';
@@ -67,7 +67,7 @@ async function runAll(s: MemoryStore, lease: string): Promise<void> {
   await s.commit(await credentialUnits(s), lease);
 }
 
-const withoutStats = ({ stats: _stats, ...rest }: EngineSnapshot) => rest;
+const withoutStats = ({ stats: _stats, ...rest }: MemoryStoreSnapshot) => rest;
 const reg = (c: Credential, hash: string, h: number, scripts?: Uint8Array[]): LedgerInput =>
   ({ kind: 'reg', credential: c, txHash: hash, blockHeight: h, txIndex: 0, certIndex: 0, witnessScripts: scripts });
 const unreg = (c: Credential, hash: string, h: number): LedgerInput =>
@@ -96,7 +96,7 @@ const txs: ChainTx[] = [
 ];
 const ledger: LedgerInput[] = [reg(M7, T(0xa5), 5), reg(M9, T(0xa6), 5), reg(MS, T(0xa7), 45, [scriptBytes(S)])];
 
-async function applied(): Promise<{ s: MemoryStore; lease: string; before: EngineSnapshot }> {
+async function applied(): Promise<{ s: MemoryStore; lease: string; before: MemoryStoreSnapshot }> {
   const { s, lease } = fresh();
   for (const l of ledger) s.ingestLedgerRow(l);
   for (const tx of txs) s.ingestLabelTx(tx);
@@ -105,7 +105,7 @@ async function applied(): Promise<{ s: MemoryStore; lease: string; before: Engin
   return { s, lease, before: s.snapshot() };
 }
 
-async function truncated(h = 35): Promise<{ s: MemoryStore; lease: string; before: EngineSnapshot; after: EngineSnapshot }> {
+async function truncated(h = 35): Promise<{ s: MemoryStore; lease: string; before: MemoryStoreSnapshot; after: MemoryStoreSnapshot }> {
   const { s, lease, before } = await applied();
   let steps = 0;
   while ((await s.truncateStep(h, 2, lease)) === 'more') steps++;
@@ -449,9 +449,22 @@ describe('MemoryStore recovery', () => {
     s.ingestLedgerRow(unreg(M7, T(0xb0), 30)); // late, below M7's applied-through
     expect(await s.pendingRecovery()).toEqual({ kind: 'rebuild' });
     while ((await s.resetStep('rebuild', 4, lease)) === 'more');
-    await s.finishRecovery(lease);
+    await s.finishRecovery({ kind: 'rebuild' }, lease);
     expect(await s.pendingRecovery()).toEqual({ kind: 'truncate', above: 29 });
-    await s.finishRecovery(lease);
+    await s.finishRecovery({ kind: 'truncate', above: 29 }, lease);
+    expect(await s.pendingRecovery()).toBeNull();
+  });
+
+  it('finishRecovery pops only a first slot that still equals the finished recovery', async () => {
+    const { s, lease } = await applied();
+    await s.openRecovery({ kind: 'truncate', above: 25 }, lease);
+    while ((await s.truncateStep(25, 1000, lease)) === 'more');
+    await s.openRecovery({ kind: 'truncate', above: 19 }, lease); // merged in between
+    await s.finishRecovery({ kind: 'truncate', above: 25 }, lease);
+    expect(await s.pendingRecovery()).toEqual({ kind: 'truncate', above: 19 });
+    await s.finishRecovery({ kind: 'rebuild' }, lease);
+    expect(await s.pendingRecovery()).toEqual({ kind: 'truncate', above: 19 });
+    await s.finishRecovery({ kind: 'truncate', above: 19 }, lease);
     expect(await s.pendingRecovery()).toBeNull();
   });
 
@@ -462,7 +475,7 @@ describe('MemoryStore recovery', () => {
     await s.openRecovery({ kind: 'fork' }, lease);
     expect(s.snapshot().recovery).toEqual({ first: { kind: 'fork' }, then: null });
     while ((await s.resetStep('fork', 5, lease)) === 'more');
-    await s.finishRecovery(lease);
+    await s.finishRecovery({ kind: 'fork' }, lease);
     expect(await s.pendingRecovery()).toBeNull();
     const after = s.snapshot();
     expect(after.labelTxs).toEqual([]);

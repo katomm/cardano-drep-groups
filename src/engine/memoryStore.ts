@@ -19,9 +19,9 @@ interface QueueRow { q: QueuedEvent; applied: boolean }
 interface TxContextRow { txHash: Hex; blockHeight: number; txIndex: number; context: TxContext }
 interface LeaseRow { owner: string; token: string; expiresAt: number; expired: boolean }
 
+// What the conformance driver reads from any store: frontiers, state tables and raw inputs.
 export interface EngineSnapshot {
   frontiers: Frontiers;
-  recovery: RecoveryState;
   groups: GroupVersion[];                                 // current version per group, by creation
   versions: GroupVersion[];
   scripts: ScriptRow[];
@@ -33,6 +33,11 @@ export interface EngineSnapshot {
   labelTxs: Array<{ txHash: Hex; blockHeight: number; txIndex: number; marker: boolean }>;
   ledger: LedgerInput[];
   appliedThrough: Array<{ credential: Credential; at: Pos }>;
+}
+
+// MemoryStore internals on top, for its own tests: recovery slots, completeness flags, call counters.
+export interface MemoryStoreSnapshot extends EngineSnapshot {
+  recovery: RecoveryState;
   complete: Array<{ credential: Credential; complete: boolean }>; // explicit flags only
   stats: MemoryStore['stats'];
 }
@@ -379,8 +384,11 @@ export class MemoryStore implements Store {
     this.recovery = mergeRecovery(this.recovery, r);
   }
 
-  async finishRecovery(lease: string): Promise<void> {
+  async finishRecovery(done: Recovery, lease: string): Promise<void> {
     this.checkLease(lease);
+    const first = this.recovery.first;
+    if (first === null || first.kind !== done.kind) return;
+    if (first.kind === 'truncate' && done.kind === 'truncate' && first.above !== done.above) return;
     this.recovery = { first: this.recovery.then, then: null };
   }
 
@@ -460,13 +468,13 @@ export class MemoryStore implements Store {
     return ops;
   }
 
-  snapshot(): EngineSnapshot {
+  snapshot(): MemoryStoreSnapshot {
     const current = new Map<string, GroupVersion>();
     for (const v of this.versions.values()) {
       const cur = current.get(refKey(v.id));
       if (!cur || comparePos(v.at, cur.at) > 0) current.set(refKey(v.id), v);
     }
-    const snap: EngineSnapshot = {
+    const snap: MemoryStoreSnapshot = {
       frontiers: { L: this.L, R: this.R, G: this.G },
       recovery: this.recovery,
       groups: [...current.values()].sort(byPos((g) => g.createdAt, (g) => refKey(g.id))),

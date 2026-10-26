@@ -194,7 +194,7 @@ export function assertEquivalent(engine: DisplayProjection, reference: DisplayPr
   if (lines.length > 0) throw new ConformanceError(`engine differs from replay:\n  ${lines.join('\n  ')}`);
 }
 
-// The state tables of a snapshot, without raw inputs, frontiers and stats.
+// The state tables of a snapshot, without raw inputs and frontiers.
 function stateTables(s: EngineSnapshot) {
   return {
     versions: s.versions, scripts: s.scripts, memberScripts: s.memberScripts, instances: s.instances,
@@ -268,7 +268,8 @@ function checkMonotone(before: EngineSnapshot, after: EngineSnapshot): void {
 const sameState = (a: unknown, b: unknown): boolean => canon(a) === canon(b);
 
 // The marker rule: txs the library ignores and txs without a readable event or script
-// are kept by hash only, they never change state.
+// are kept by hash only, they never change state. The oracle's own copy, kept apart from
+// MemoryStore's on purpose so the check stays independent of the store under test.
 function isMarker(tx: ChainTx): boolean {
   if (!tx.isValid || tx.payloadRepeated || tx.payload === undefined) return true;
   const d = decodePayload(tx.payload);

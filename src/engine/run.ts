@@ -22,18 +22,17 @@ const posOf = (x: CredentialInput): Pos => (x.kind === 'ledger' ? x.at : x.q.at)
 type Observed = Parameters<RuleObserver>[0];
 
 // Loads the three key stages, each stage from the view of the one before, then runs the
-// unit once on the complete view. Rule results of a done unit go to `sink`, the caller
-// forwards them only once the commit that carries the unit has succeeded.
+// unit once on the complete view. Both units report rule results only when done, they go
+// to `sink`, and the caller forwards them only once the commit that carries the unit has
+// succeeded.
 async function runUnit(
   store: Store, inputs: Inputs, overlay: ChangeSet[], sink: Observed[],
   apply: (view: View, observe: RuleObserver) => Step<ChangeSet>,
 ): Promise<ChangeSet> {
   let view: View | null = null;
   for (const stage of [1, 2, 3] as const) view = await store.load(stageKeys(stage, inputs, view, overlay), overlay);
-  const results: Observed[] = [];
-  const step = apply(view as View, (r) => results.push(r));
+  const step = apply(view as View, (r) => sink.push(r));
   if (!('done' in step)) throw new Error(`unit still needs keys after stage 3: ${JSON.stringify(step.need)}`);
-  sink.push(...results);
   return step.done;
 }
 
@@ -45,7 +44,7 @@ export async function runEngine(store: Store, budget: Budget, lease: string, opt
     const step = recovery.kind === 'truncate'
       ? await store.truncateStep(recovery.above, budget.truncateRows, lease)
       : await store.resetStep(recovery.kind, budget.resetRows, lease);
-    if (step === 'done') await store.finishRecovery(lease);
+    if (step === 'done') await store.finishRecovery(recovery, lease);
     // The normal phase has not run yet and a second recovery slot may follow.
     return { phase: 'recovery', recovery, controlTxs: 0, units: 0, inputs: 0, G: null, more: true };
   }

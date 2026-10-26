@@ -48,7 +48,10 @@ export interface ChangeSet {
   effects: AggregateEffect[];
 }
 export interface StoredLabelTx { tx: ChainTx; bytes: number } // position from tx, markers are never returned
-export interface RoutedEvent { ref: EventRef; at: Pos; decoded: DecodedEvent; plane: 'control' | 'membership' | 'orphan'; subject: Credential | null }
+// `group` is the resolved group of a membership event's join, null for control events and orphans.
+export interface RoutedEvent {
+  ref: EventRef; at: Pos; decoded: DecodedEvent; plane: 'control' | 'membership' | 'orphan'; subject: Credential | null; group: EventRef | null;
+}
 export interface Routed { scripts: PublishedScript[]; events: RoutedEvent[]; joinMembers: Credential[]; foreignJoins: EventRef[] }
 export type CursorUpdate = { kind: 'group'; G: Pos } | { kind: 'credential'; credential: Credential; appliedThrough: Pos };
 export interface Budget { controlTxs: number; controlBytes: number; credentialUnits: number; credentialInputs: number; truncateRows: number; resetRows: number }
@@ -57,6 +60,10 @@ export type Recovery = { kind: 'truncate'; above: number } | { kind: 'rebuild' }
 export interface Frontiers { L: number; R: number | null; G: Pos }
 export interface RecoveryState { first: Recovery | null; then: { kind: 'truncate'; above: number } | null }
 export interface ReadyCredential { c: Credential; inputs: CredentialInput[]; more: boolean }
+// Ingest, classifyNewInput and openRecovery never run while a runEngine call is in flight:
+// a run reads the frontiers, the label txs and the recovery slots once and commits what it
+// computed from them. Callers serialize ingest with runs, for example under the same lease
+// holder.
 export interface Store {
   load(keys: Keys, overlay: ChangeSet[]): Promise<View>;
   commit(units: Array<{ change: ChangeSet; cursor: CursorUpdate }>, lease: string): Promise<void>; // atomic
@@ -69,7 +76,9 @@ export interface Store {
   frontiers(): Promise<Frontiers>;
   pendingRecovery(): Promise<Recovery | null>;     // the first slot of RecoveryState
   openRecovery(r: Recovery, lease: string): Promise<void>; // stores mergeRecovery(current, r)
-  finishRecovery(lease: string): Promise<void>;     // pops the first slot when its step reported done
+  // Pops the first slot when it still equals `done`, the recovery whose step reported done
+  // (same kind and, for a truncation, the same `above`). A slot merged since is kept.
+  finishRecovery(done: Recovery, lease: string): Promise<void>;
   truncateStep(above: number, budget: number, lease: string): Promise<'more' | 'done'>;
   resetStep(mode: 'rebuild' | 'fork', budget: number, lease: string): Promise<'more' | 'done'>;
 }

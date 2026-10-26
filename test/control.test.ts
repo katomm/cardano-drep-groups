@@ -83,7 +83,7 @@ describe('applyControl', () => {
     expect(cs.queued.map((q) => [q.subject, q.at, q.group, q.txHash, (q.event as { ok: true; event: { tag: string } }).event.tag])).toEqual([
       [keyCred(K(7)), posOfEvent(tx, 0), G1, T(10), 'join'],
       [keyCred(K(8)), posOfEvent(tx, 1), G1, T(10), 'join'],
-      [keyCred(K(7)), posOfEvent(tx, 2), null, T(10), 'leave'],
+      [keyCred(K(7)), posOfEvent(tx, 2), G1, T(10), 'leave'], // the group of its join
     ]);
     expect(cs.verdicts).toEqual([]);
   });
@@ -164,6 +164,20 @@ describe('applyControl', () => {
     const tx = chainTx({ hash: T(10), h: 10, rs: [K(1)], payload: buildPayload([ev.dissolve(ref(T(2), 0), 0)]) });
     const step = runControl(c, tx, [], 0).step;
     expect(step).toEqual({ need: { instances: [], latestInstances: [], groupsAt: [[G1, posOfEvent(tx, 0)]], scriptsAt: [], credentialAt: [] } });
+  });
+
+  it('reports rule results only when the unit is done', () => {
+    const c = committed({ versions: [v0()], scripts: [published(C0, early)] });
+    // An orphan first, then a dissolve whose group is not loaded at stage 0.
+    const tx = chainTx({ hash: T(10), h: 10, rs: [K(1)], payload: buildPayload([ev.leave(ref(T(3), 0)), ev.dissolve(ref(T(2), 0), 0)]) });
+    const seen: unknown[] = [];
+    expect('need' in runControl(c, tx, [], 0, (r) => seen.push(r)).step).toBe(true);
+    expect(seen).toEqual([]);
+    done(runControl(c, tx, [], 3, (r) => seen.push(r)).step);
+    expect(seen).toMatchObject([
+      { ref: { txHash: T(10), index: 0 }, valid: false, reason: 'unknown join' },
+      { ref: { txHash: T(10), index: 1 }, tag: 'dissolve', valid: true },
+    ]);
   });
 });
 
@@ -272,7 +286,7 @@ describe('stageKeys for a credential unit', () => {
     const ctx = { signers: [K(7)], requiredSigners: [K(7)], invalidBefore: null, invalidHereafter: null };
     const inputs = [
       { kind: 'event' as const, tx: ctx, q: { subject: M, at: joinAt, group: G1, txHash: T(30), event: { ok: true as const, event: { tag: 'join' as const, group: G1, member: M } } } },
-      { kind: 'event' as const, tx: ctx, q: { subject: M, at: approveAt, group: null, txHash: T(30), event: { ok: true as const, event: { tag: 'approve' as const, join: { local: 0 } } } } },
+      { kind: 'event' as const, tx: ctx, q: { subject: M, at: approveAt, group: G1, txHash: T(30), event: { ok: true as const, event: { tag: 'approve' as const, join: { local: 0 } } } } },
     ];
     const c = committed({ versions: [v0()] });
     const s1 = stageKeys(1, { c: M, inputs }, null);
@@ -294,7 +308,7 @@ describe('stageKeys for a credential unit', () => {
     const J: EventRef = { txHash: T(25), index: 0 };
     const joinedAt = posOfEvent({ txHash: T(25), blockHeight: 25, txIndex: 0 }, 0);
     const ctx = { signers: [K(7)], requiredSigners: [K(7)], invalidBefore: null, invalidHereafter: null };
-    const inputs = [{ kind: 'event' as const, tx: ctx, q: { subject: M, at: approveAt, group: null, txHash: T(31), event: { ok: true as const, event: { tag: 'approve' as const, join: J } } } }];
+    const inputs = [{ kind: 'event' as const, tx: ctx, q: { subject: M, at: approveAt, group: G1, txHash: T(31), event: { ok: true as const, event: { tag: 'approve' as const, join: J } } } }];
     const overlay = [{
       ...emptyChangeSet(),
       versions: [v0()],
