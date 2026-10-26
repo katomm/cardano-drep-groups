@@ -2,7 +2,7 @@
 // the change sets of earlier units of the same uncommitted batch, then to the view. A
 // read the view was not loaded for is recorded in `needed` and answered with null.
 import { type CloseReason, effectiveClose } from '../effective.js';
-import { comparePos, type Pos } from '../position.js';
+import { comparePos, type Pos, posKey } from '../position.js';
 import { type GroupVersion, resolve, type RuleWorld, type StoredInstance } from '../rules.js';
 import { credKey, refKey } from '../state.js';
 import type { ChainTx, Credential, EventRef, Hex, NativeScript } from '../types.js';
@@ -16,8 +16,6 @@ export const emptyChangeSet = (): ChangeSet => ({
 });
 export const isEmptyKeys = (k: Keys): boolean =>
   k.instances.length + k.latestInstances.length + k.groupsAt.length + k.scriptsAt.length + k.credentialAt.length === 0;
-
-const posKey = (p: Pos): string => `${p.blockHeight},${p.txIndex},${p.phase},${p.index}`;
 
 // Collects keys without duplicates, in first seen order.
 class KeySet {

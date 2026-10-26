@@ -1,6 +1,6 @@
 // A bounded fixture view for the engine unit tests.
 import type { Keys, View } from '../src/engine/types.js';
-import { comparePos, type Pos, posOfCert } from '../src/position.js';
+import { comparePos, type Pos, posKey, posOfCert } from '../src/position.js';
 import type { GroupVersion, StoredInstance } from '../src/rules.js';
 import { credKey, refKey } from '../src/state.js';
 import type { ChainTx, Credential, DecodedEvent, EventRef, Hex, LedgerInput, NativeScript } from '../src/types.js';
@@ -18,7 +18,6 @@ export interface Committed {
 export const committed = (o: Partial<Committed> = {}): Committed =>
   ({ scripts: [], memberScripts: [], versions: [], instances: [], ledger: [], queued: [], ...o });
 
-const posKey = (p: Pos): string => `${p.blockHeight},${p.txIndex},${p.phase},${p.index}`;
 export function keyStrings(k: Keys): string[] {
   return [
     ...k.instances.map((r) => `i:${refKey(r)}`),

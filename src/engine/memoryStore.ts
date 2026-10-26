@@ -1,7 +1,7 @@
 // The reference store of the incremental engine, in memory. Implements the Store contract
 // plus driver hooks for raw input ingest, frontiers, completeness and the lease.
 import { decodePayload } from '../payload.js';
-import { afterTx, comparePos, endOf, minPos, type Pos, posOfCert } from '../position.js';
+import { afterTx, comparePos, endOf, minPos, type Pos, posKey, posOfCert } from '../position.js';
 import type { GroupVersion, StoredInstance } from '../rules.js';
 import { credKey, refKey } from '../state.js';
 import type { ChainTx, Credential, DecodedEvent, EventRef, Hex, LedgerInput, NativeScript } from '../types.js';
@@ -37,7 +37,6 @@ export interface EngineSnapshot {
   stats: MemoryStore['stats'];
 }
 
-const posKey = (p: Pos): string => `${p.blockHeight},${p.txIndex},${p.phase},${p.index}`;
 const versionKey = (v: GroupVersion): string => `${refKey(v.id)}@${posKey(v.at)}`;
 const queueRef = (q: QueuedEvent): EventRef => ({ txHash: q.txHash, index: q.at.index });
 const sameCred = (a: Credential, b: Credential): boolean => a.kind === b.kind && a.hash === b.hash;

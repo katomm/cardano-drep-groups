@@ -29,5 +29,9 @@ export const posOfScripts = (tx: TxPosition): Pos =>
 export const posOfEvent = (tx: TxPosition, index: number): Pos =>
   ({ blockHeight: tx.blockHeight, txIndex: tx.txIndex, txHash: tx.txHash, phase: 2, index });
 
+// A string key of the order fields, for maps keyed by position. The tx hash is left out
+// as in the order.
+export const posKey = (p: Pos): string => `${p.blockHeight},${p.txIndex},${p.phase},${p.index}`;
+
 export const minPos = (a: Pos, b: Pos): Pos => (comparePos(a, b) <= 0 ? a : b);
 export const maxPos = (a: Pos, b: Pos): Pos => (comparePos(a, b) >= 0 ? a : b);

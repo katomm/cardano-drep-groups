@@ -7,7 +7,7 @@ import type { ChangeSet, CredentialInput, View } from '../src/engine/types.js';
 import { effectiveClose } from '../src/effective.js';
 import { parseNativeScript } from '../src/nativeScript.js';
 import { decodePayload } from '../src/payload.js';
-import { comparePos, type Pos, posOfCert, posOfEvent } from '../src/position.js';
+import { comparePos, type Pos, posKey, posOfCert, posOfEvent } from '../src/position.js';
 import type { StoredInstance } from '../src/rules.js';
 import { credKey, refKey, replay } from '../src/state.js';
 import type { ChainTx, Credential, EventRef, Instance, LedgerInput } from '../src/types.js';
@@ -230,7 +230,6 @@ describe('applyCredential', () => {
     // first unreg after the join, for the leave and for the open slot) and at the new join
     // (registered). The leave of a key member reads no registration.
     expect([...view.asked].filter((k) => !keys.includes(k))).toEqual([]);
-    const posKey = (p: Pos): string => `${p.blockHeight},${p.txIndex},${p.phase},${p.index}`;
     expect([...view.asked].filter((k) => k.startsWith('c:')).sort()).toEqual([joinedAt, joinAt].map((p) => `c:${credKey(M)}@${posKey(p)}`).sort());
     // Without the stages the unit names what it misses instead of a change set. The rules
     // stop at the first missing read, the instance of the leave and the group of the join.
