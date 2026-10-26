@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type EngineSnapshot, MemoryStore } from '../src/engine/memoryStore.js';
 import { runEngine } from '../src/engine/run.js';
-import type { Budget, ChangeSet, Keys, RunReport, View } from '../src/engine/types.js';
+import { type Budget, type ChangeSet, type CursorUpdate, type Keys, LeaseLostError, type RunReport, type View } from '../src/engine/types.js';
 import { afterTx, endOf, posOfCert, posOfEvent } from '../src/position.js';
 import { refKey } from '../src/state.js';
 import type { ChainTx, Credential, LedgerInput } from '../src/types.js';
@@ -345,5 +345,91 @@ describe('runEngine batching and interruption', () => {
     expect(s.snapshot().appliedThrough).toEqual([]);
     await runEngine(s, BIG, lease);
     expect(s.snapshot().appliedThrough).toEqual([{ credential: M7, at: posOfCert(reg(M7, T(0xa1), 5)) }]);
+  });
+
+  it('maxCommits 0 emits nothing and makes no load calls', async () => {
+    const { s, lease } = fresh();
+    s.ingestLedgerRow(reg(M7, T(0xa1), 5));
+    s.ingestLabelTx(create);
+    s.ingestLabelTx(join7(20));
+    s.setFrontiers({ L: 30, R: 30 });
+    const seen: Observed[] = [];
+    const r = await runEngine(s, BIG, lease, { maxCommits: 0, observe: (o) => seen.push(o) });
+    expect(r).toMatchObject({ phase: 'normal', controlTxs: 0, units: 0, G: endOf(-1), more: true });
+    expect(seen).toEqual([]);
+    expect(s.stats.calls.load).toBeUndefined();
+    expect(s.stats.calls.nextLabelTxs).toBeUndefined();
+    expect(s.stats.calls.readyCredentials).toBeUndefined();
+    expect(commits(s)).toBe(0);
+  });
+});
+
+describe('runEngine with a lost lease', () => {
+  // Throws LeaseLostError on the nth commit, before anything is written.
+  class Losing extends MemoryStore {
+    calls = 0;
+    constructor(private failOn: number) {
+      super({});
+    }
+    override async commit(units: Array<{ change: ChangeSet; cursor: CursorUpdate }>, lease: string): Promise<void> {
+      if (++this.calls === this.failOn) throw new LeaseLostError('lease lost');
+      return super.commit(units, lease);
+    }
+  }
+
+  const setup = (s: MemoryStore): void => {
+    s.ingestLedgerRow(reg(M7, T(0xa1), 5));
+    s.ingestLabelTx(create);
+    s.ingestLabelTx(join7(20));
+    s.setFrontiers({ L: 30, R: 30 });
+  };
+  const counter = () => {
+    const counts = new Map<string, number>();
+    return { counts, observe: (r: Observed) => counts.set(refKey(r.ref), (counts.get(refKey(r.ref)) ?? 0) + 1) };
+  };
+
+  async function reference() {
+    const { s, lease } = fresh();
+    setup(s);
+    const c = counter();
+    await runUntilDone(s, lease, BIG, c.observe);
+    return { snap: withoutStats(s.snapshot()), counts: c.counts };
+  }
+
+  it('a failed group commit writes nothing and emits no observe results', async () => {
+    const s = new Losing(1);
+    const lease = s.acquireLease('test');
+    setup(s);
+    const before = withoutStats(s.snapshot());
+    const c = counter();
+    await expect(runEngine(s, BIG, lease, { observe: c.observe })).rejects.toThrow(LeaseLostError);
+    expect(withoutStats(s.snapshot())).toEqual(before);
+    expect(c.counts.size).toBe(0);
+  });
+
+  it('a failed credential commit keeps the group commit and emits only the group results', async () => {
+    const s = new Losing(2);
+    const lease = s.acquireLease('test');
+    setup(s);
+    const c = counter();
+    await expect(runEngine(s, BIG, lease, { observe: c.observe })).rejects.toThrow(LeaseLostError);
+    expect(s.snapshot().frontiers.G).toEqual(endOf(30));
+    expect(s.snapshot().groups).toHaveLength(1);
+    expect(s.snapshot().appliedThrough).toEqual([]);
+    expect([...c.counts]).toEqual([[`${T(0x10)}#0`, 1]]);
+  });
+
+  it('a later run with a fresh lease reaches the same state and each result exactly once', async () => {
+    const ref = await reference();
+    expect(ref.counts.size).toBe(2);
+    for (const failOn of [1, 2]) {
+      const s = new Losing(failOn);
+      setup(s);
+      const c = counter();
+      await expect(runEngine(s, BIG, s.acquireLease('test'), { observe: c.observe })).rejects.toThrow(LeaseLostError);
+      await runUntilDone(s, s.acquireLease('test'), BIG, c.observe);
+      expect(withoutStats(s.snapshot())).toEqual(ref.snap);
+      expect(c.counts).toEqual(ref.counts);
+    }
   });
 });
