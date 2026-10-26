@@ -28,6 +28,10 @@ import {
   Ed25519Signature,
   type UTxO,
 } from '@evolution-sdk/evolution';
+import { runSchedule, type ScheduleStep } from '../../src/conformance/index.js';
+import { BIG_BUDGET } from '../../src/conformance/generate.js';
+import { MemoryStore, type Budget } from '../../src/engine/index.js';
+import { credKey } from '../../src/state.js';
 import { arrayItemOffsets, itemEnd, mapEntryOffsets, readHead, readUint, skipTags } from '../../src/cborSpan.js';
 import { nativeScriptHash } from '../../src/hash.js';
 import {
@@ -150,6 +154,42 @@ describe('DRep groups on a devnet', () => {
   const group = (id: EventRef) => state().groups.find((g) => g.id.txHash === id.txHash && g.id.index === id.index);
   const instance = (id: EventRef) =>
     state().instances.find((i) => i.joinId.txHash === id.txHash && i.joinId.index === id.index);
+  const heightOf = (x: ChainInput): number => (x.kind === 'tx' ? x.tx.blockHeight : x.input.blockHeight);
+
+  /**
+   * Runs the chain inputs collected so far through the incremental engine over a
+   * MemoryStore and compares the result with replay. runSchedule ends with the
+   * comparison and the quiescence checks, a mismatch throws with a diff. Twice:
+   * everything at once with a big budget, then one input at a time with a run of
+   * budget 1 after each and the frontiers at the delivered height.
+   */
+  async function checkEngine(): Promise<void> {
+    const started = Date.now();
+    const chain = [...inputs];
+    const tip = chain.reduce((h, x) => Math.max(h, heightOf(x)), -1);
+    const credentials = new Map<string, Credential>();
+    for (const x of chain) if (x.kind === 'ledger') credentials.set(credKey(x.input.credential), x.input.credential);
+    for (const i of replay(chain).instances) credentials.set(credKey(i.member), i.member);
+    const complete: ScheduleStep[] = [...credentials.values()].map((c) => ({ kind: 'complete', c, complete: true }));
+
+    await runSchedule(() => new MemoryStore(), chain, [
+      { kind: 'deliver', inputs: chain }, { kind: 'frontiers', L: tip, R: tip }, ...complete, { kind: 'run', budget: BIG_BUDGET },
+    ]);
+
+    const one: Budget = { controlTxs: 1, controlBytes: 1, credentialUnits: 1, credentialInputs: 1, truncateRows: 1, resetRows: 1 };
+    const steps: ScheduleStep[] = [...complete];
+    chain.forEach((x, i) => {
+      steps.push({ kind: 'deliver', inputs: [x] });
+      // The ledger rows of a transaction come right before the transaction at the
+      // same height, the frontiers pass a height only once all of it is delivered.
+      const next = chain[i + 1];
+      if (next === undefined || heightOf(next) > heightOf(x)) steps.push({ kind: 'frontiers', L: heightOf(x), R: heightOf(x) });
+      steps.push({ kind: 'run', budget: one });
+    });
+    await runSchedule(() => new MemoryStore(), chain, steps);
+    console.log(`[devnet] engine equals replay over ${chain.length} inputs, at once and one input at a time (${Date.now() - started} ms)`);
+  }
+
   const slotUnix = (slot: bigint) => Time.slotToUnixTime(slot, dev().slotConfig);
 
   async function currentSlot(): Promise<bigint> {
@@ -295,6 +335,7 @@ describe('DRep groups on a devnet', () => {
     expect(instance(founderJoin)).toMatchObject({ member: { kind: 'key', hash: D0.hash }, state: 'active', group: group1 });
     expect(state().scripts.has(hashOf(control1))).toBe(true);
     note(`S1 accepted: nested event arrays, a local ref [0] and a ${scriptBytes(control1).length} byte script in 64 byte chunks under label ${GROUPS_LABEL}, bytes read back unchanged`);
+    await checkEngine();
   });
 
   it('2: a create signed by only 2 of the 3 listed keys is valid for the ledger, invalid for the library', async () => {
@@ -304,6 +345,7 @@ describe('DRep groups on a devnet', () => {
     expect(verdict(tx.hash, 0)).toMatchObject({ tag: 'create', valid: false, reason: 'listed key did not sign' });
     expect(group({ txHash: tx.hash, index: 0 })).toBeUndefined();
     note('S2 accepted by the ledger, library verdict "listed key did not sign"');
+    await checkEngine();
   });
 
   it('3: a DRep key in required_signers of a metadata-only transaction, join then leave', async () => {
@@ -329,6 +371,7 @@ describe('DRep groups on a devnet', () => {
     expect(verdict(leave.hash, 0)).toMatchObject({ tag: 'leave', valid: true });
     expect(instance(joinId)).toMatchObject({ state: 'closed', reason: 'left', closedAt: { txHash: leave.hash } });
     note('S3 accepted: a CIP-105 DRep key (role 3, owns no input) as the only required signer of a metadata-only transaction, join and leave valid');
+    await checkEngine();
   });
 
   it('4: a policy key that witnesses without being in required_signers', async () => {
@@ -344,6 +387,7 @@ describe('DRep groups on a devnet', () => {
     expect(verdict(r.hash, 0)).toMatchObject({ tag: 'create', valid: true, reason: null });
     expect(group({ txHash: r.hash, index: 0 })).toMatchObject({ control: hashOf(control), status: 'active' });
     note('S4 accepted: the ledger takes a vkey witness of a key that is in neither required_signers nor any input, the library counts it (union signer set)');
+    await checkEngine();
   });
 
   it('5: a permissioned group, join pending, approve with 1 of 2, remove', async () => {
@@ -368,6 +412,7 @@ describe('DRep groups on a devnet', () => {
     expect(verdict(remove.hash, 0)).toMatchObject({ tag: 'remove', valid: true });
     expect(instance(joinId)).toMatchObject({ state: 'closed', reason: 'removed', closedAt: { txHash: remove.hash } });
     note('S5 accepted: permissioned create, join pending, approve by 1 of 2, remove, all valid');
+    await checkEngine();
   });
 
   it('6: a script DRep joins, its script resolved from the reg_drep witness set', async () => {
@@ -387,6 +432,7 @@ describe('DRep groups on a devnet', () => {
     expect(instance({ txHash: join.hash, index: 0 })).toMatchObject({ state: 'active', member: { kind: 'script', hash: h } });
     expect(state().scripts.has(h)).toBe(false); // resolved through the reg_drep witness set, not key 2
     note('S6 accepted: reg_drep of a native script credential carries the script in witness field 1, decodeTransaction reads it, the join without key 2 is valid');
+    await checkEngine();
   });
 
   it('7: a control policy rotation that adds a key, then the old keys alone cannot update', async () => {
@@ -404,6 +450,7 @@ describe('DRep groups on a devnet', () => {
     expect(verdict(oldKeys.hash, 0)).toMatchObject({ valid: false, reason: 'control policy not satisfied' });
     expect(group(group1)).toMatchObject({ seq: 1n });
     note('S7 accepted: rotation valid with seq 1, a stale seq and an update by the old keys alone are invalid for the library');
+    await checkEngine();
   });
 
   it('8: unreg_drep closes the membership as retired, a new join after re-registration opens a new instance', async () => {
@@ -419,6 +466,7 @@ describe('DRep groups on a devnet', () => {
     expect(instance({ txHash: rejoin.hash, index: 0 })).toMatchObject({ state: 'active', member: { kind: 'key', hash: D0.hash } });
     expect(instance(founderJoin)).toMatchObject({ state: 'closed', reason: 'retired' });
     note('S8 accepted: unreg_drep closes with reason retired, a join while unregistered is invalid, re-registration plus a new join opens a new active instance');
+    await checkEngine();
   });
 
   it('9: time locks against real validity intervals', async () => {
@@ -449,6 +497,7 @@ describe('DRep groups on a devnet', () => {
     expect(noEnd.chain.invalidHereafter).toBeNull();
     expect(verdict(noEnd.hash, 0)).toMatchObject({ valid: false, reason: 'control policy not satisfied' });
     note(`S9 accepted all six: after ${s} valid only with invalid_before >= ${s}, before ${t} valid only with invalid_hereafter <= ${t}`);
+    await checkEngine();
   });
 
   it('10: ledger limits on metadata', async () => {
@@ -514,5 +563,6 @@ describe('DRep groups on a devnet', () => {
     expect(verdict(deepTx.hash, 0)).toMatchObject({ tag: 'create', valid: true, reason: null });
     expect(group({ txHash: deepTx.hash, index: 0 })).toMatchObject({ status: 'active' });
     note(`S10 3000 nested arrays under unknown payload key 9 (tx ${tx.length} bytes): ledger accepted, the library decodes the payload and the create next to it is valid`);
+    await checkEngine();
   });
 });
