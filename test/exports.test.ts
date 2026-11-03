@@ -24,7 +24,7 @@ describe('package surface', () => {
       root.scriptComplexity, root.comparePos, root.endOf, root.posOfCert, root.posOfScripts,
       root.posOfEvent, root.effectiveClose, root.runEngine, root.MemoryStore, root.classifyNewInput,
       root.routeTx, root.LazyWorld, root.applyControl, root.applyCredential, root.replay, root.memberScriptWitness,
-      root.encodePayload, root.encodeNativeScript, root.encodeCbor, root.chunkText, root.chunkBytes, root.EncodeError,
+      root.encodePayload, root.encodeNativeScript, root.encodeCbor, root.chunkText, root.chunkBytes, root.EncodeError, root.majorityScript,
     ]) expect(typeof fn).toBe('function');
     expect(root.ALL_REASONS.length).toBeGreaterThan(0);
   });
