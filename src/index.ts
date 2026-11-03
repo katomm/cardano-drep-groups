@@ -6,6 +6,7 @@ export { decodePayload, GROUPS_LABEL } from './payload.js';
 export { chunkBytes, chunkText, EncodeError, encodeCbor, encodeNativeScript, encodePayload, type PayloadInput } from './encode.js';
 export { type MajorityScript, majorityScript } from './majority.js';
 export { decodeTransaction } from './tx.js';
+export { inspectTransaction, type TxFacts } from './txFacts.js';
 export { credKey, orderInputs, refKey, replay } from './state.js';
 export { type AddressCheck, checkPaymentAddress, type Network } from './address.js';
 export { groupIdFromBech32, groupIdToBech32 } from './groupId.js';
