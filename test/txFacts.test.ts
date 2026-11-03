@@ -1,3 +1,4 @@
+import { AuxiliaryData, Transaction, TransactionBody, TransactionMetadatum, TransactionWitnessSet } from '@evolution-sdk/evolution';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { decode, encode, Tagged } from 'cborg';
 import { describe, expect, it } from 'vitest';
@@ -22,6 +23,33 @@ function tx(opts: { aux?: Uint8Array | null; hashOf?: Uint8Array; extra?: Array<
 
 const metadata = (label = 8416) => encode(new Map([[label, payloadValue]]));
 const tagged = (label = 8416) => concatBytes([hexToBytes('d90103a100'), metadata(label)]);
+
+describe('inspectTransaction on Evolution transactions', () => {
+  const metadata = new Map([[8416n, TransactionMetadatum.fromCBORBytes(payload)]]);
+  const forms = {
+    conway: AuxiliaryData.conway({ metadata }),
+    shelleyMA: AuxiliaryData.shelleyMA({ metadata }),
+    shelley: AuxiliaryData.shelley({ metadata }),
+  };
+  const build = (aux: AuxiliaryData.AuxiliaryData, hashOf: AuxiliaryData.AuxiliaryData = aux) =>
+    Transaction.toCBORBytes(
+      new Transaction.Transaction({
+        body: new TransactionBody.TransactionBody({ inputs: [], outputs: [], fee: 0n, auxiliaryDataHash: AuxiliaryData.toHash(hashOf) }),
+        witnessSet: new TransactionWitnessSet.TransactionWitnessSet({}),
+        isValid: true,
+        auxiliaryData: aux,
+      }),
+    );
+  for (const [name, aux] of Object.entries(forms)) {
+    it(`binds and counts the ${name} auxiliary data form`, () => {
+      expect(inspectTransaction(build(aux))).toMatchObject({ auxHashMatches: true, groupPayloads: 1 });
+    });
+  }
+  it('detects an Evolution transaction whose auxiliary data was swapped', () => {
+    const other = AuxiliaryData.conway({ metadata: new Map([[674n, TransactionMetadatum.fromCBORBytes(payload)]]) });
+    expect(inspectTransaction(build(forms.conway, other))).toMatchObject({ auxHashMatches: false, groupPayloads: 1 });
+  });
+});
 
 describe('inspectTransaction', () => {
   it('binds the auxiliary data to the body hash in every form', () => {

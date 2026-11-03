@@ -12,7 +12,7 @@ export interface TxFacts {
   hasWithdrawals: boolean; // body field 5, non-empty
   hasVotes: boolean; // body field 19, non-empty
   hasProposals: boolean; // body field 20, non-empty
-  groupPayloads: number; // label 8416 entries in the metadata map that decodeTransaction reads
+  groupPayloads: number; // label 8416 entries in the metadata map that metadataOffset resolves
 }
 
 // True for a non-empty array or map, looking through tags such as the set tag 258.

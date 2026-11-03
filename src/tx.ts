@@ -47,7 +47,8 @@ function uintAt(b: Uint8Array, off: number | undefined): bigint | null {
 }
 
 // Offset of the metadata map inside the auxiliary data item, for the three
-// formats (internal helper shared with txFacts): Shelley map, Shelley-MA [metadata, scripts], Alonzo tag 259 {0: metadata}.
+// formats: Shelley map, Shelley-MA [metadata, scripts], Alonzo tag 259 {0: metadata}.
+// Internal helper, shared with txFacts.
 export function metadataOffset(cbor: Uint8Array, auxOff: number): number | null {
   const h = readHead(cbor, auxOff);
   if (h.major === 5) return auxOff;
