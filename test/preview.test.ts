@@ -162,4 +162,31 @@ describe('previewTransaction', () => {
     const deps: PreviewDeps = { ...depsOf(store), load: async (keys) => registered(await store.load(keys, [])) };
     expect(eventsOf(await previewTransaction(deps, tx))[0]).toEqual({ index: 0, tag: 'join', valid: true, reason: null });
   });
+
+  it('throws for a tx without a label payload and ignores a repeated label', async () => {
+    const { store } = await storeOf([create(1, 1, 0)]);
+    const bare = chainTx({ hash: T(2), h: 3 });
+    await expect(previewTransaction(depsOf(store), bare)).rejects.toThrow('tx carries no label 8416 payload');
+    const repeated = chainTx({ hash: T(2), h: 3, payload: buildPayload([ev.approve(ref(T(1), 0))]) });
+    expect(await previewTransaction(depsOf(store), { ...repeated, payloadRepeated: true })).toEqual({ ignored: 'label repeated' });
+  });
+
+  it('is inconclusive while the ledger frontier lags the label frontier', async () => {
+    const store = new MemoryStore();
+    const lease = store.acquireLease('test');
+    const join = txIn({ hash: T(2), h: 5, rs: [M], payload: buildPayload([ev.join(ref(T(1), 0), 'key', M)]) });
+    for (const x of [create(1, 1, 1), regM(2), join]) {
+      if (x.kind === 'tx') store.ingestLabelTx(x.tx);
+      else store.ingestLedgerRow(x.input);
+    }
+    store.setFrontiers({ L: 5, R: 3 });
+    await runToDone(store, lease);
+    const approve = chainTx({ hash: T(3), h: 6, wk: [A], payload: buildPayload([ev.approve(ref(T(2), 0))]) });
+    expect(eventsOf(await previewTransaction(depsOf(store), approve))[0]?.reason).toBe('unknown join');
+    // Once the frontiers meet, the engine itself judges the join and the approval valid.
+    store.ingestLabelTx(approve);
+    store.setFrontiers({ L: 6, R: 6 });
+    const seen = await runToDone(store, lease);
+    expect(seen.map((o) => [o.tag, o.valid])).toEqual([['join', true], ['approve', true]]);
+  });
 });

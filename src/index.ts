@@ -3,7 +3,7 @@ export { bytesToHex, hexToBytes } from './hex.js';
 export { keyHashOfVkey, nativeScriptHash } from './hash.js';
 export { collectKeyHashes, evaluateNativeScript, memberScriptWitness, parseNativeScript } from './nativeScript.js';
 export { decodePayload, GROUPS_LABEL } from './payload.js';
-export { chunkBytes, chunkText, EncodeError, encodeCbor, encodeNativeScript, encodePayload, type PayloadInput } from './encode.js';
+export { type Cbor, chunkBytes, chunkText, EncodeError, encodeCbor, encodeNativeScript, encodePayload, type PayloadInput } from './encode.js';
 export { type MajorityScript, majorityScript } from './majority.js';
 export { decodeTransaction } from './tx.js';
 export { inspectTransaction, type TxFacts } from './txFacts.js';

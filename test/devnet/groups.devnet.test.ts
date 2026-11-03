@@ -35,7 +35,7 @@ import { credKey } from '../../src/state.js';
 import { arrayItemOffsets, itemEnd, mapEntryOffsets, readHead, readUint, skipTags } from '../../src/cborSpan.js';
 import { nativeScriptHash } from '../../src/hash.js';
 import {
-  chunkText, decodeTransaction, encodePayload, GROUPS_LABEL, majorityScript, replay,
+  chunkText, decodeTransaction, encodePayload, GROUPS_LABEL, inspectTransaction, majorityScript, replay,
   type Anchor, type ChainInput, type ChainTx, type Credential, type EventRef, type GroupEvent, type RegistryState,
 } from '../../src/index.js';
 import {
@@ -287,6 +287,11 @@ describe('DRep groups on a devnet', () => {
       auxiliaryData: unsigned.auxiliaryData,
     });
     const cbor = Transaction.toCBORBytes(signed);
+    if (o.payload) {
+      const facts = inspectTransaction(cbor);
+      expect(facts.auxHashMatches).toBe(true);
+      expect(facts.groupPayloads).toBe(1);
+    }
     const predicted = o.payload
       ? await previewOf(decodeTransaction(cbor, { txHash: Bytes.toHex(bodyHash), blockHeight: 0, txIndex: 0 }))
       : undefined;

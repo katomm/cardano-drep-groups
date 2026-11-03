@@ -27,9 +27,16 @@ type Observed = Parameters<RuleObserver>[0];
 // everything it has ingested and passes required signers and vkey witnesses apart. The
 // control step runs first, then one credential step per subject in the order the engine
 // would batch them, each reading the earlier steps as overlay. Nothing is written.
+//
+// Precondition: the engine applies credential inputs only up to min(G, END(R)). While the
+// ledger frontier R lags the label frontier L, membership events between END(R) and L are
+// still pending, so the preview can report an unknown join or a wrong registration answer.
+// The preview is exact once runEngine reports more: false with R at or above L, otherwise
+// its verdicts are inconclusive.
 export async function previewTransaction(deps: PreviewDeps, tx: ChainTx): Promise<Preview> {
   if (!tx.isValid) return { ignored: 'phase-2 invalid' };
-  if (tx.payloadRepeated || tx.payload === undefined) return { ignored: 'label repeated' };
+  if (tx.payloadRepeated) return { ignored: 'label repeated' };
+  if (tx.payload === undefined) throw new Error('tx carries no label 8416 payload');
   const decoded = decodePayload(tx.payload);
   if (decoded === null) return { ignored: 'payload rejected' };
 

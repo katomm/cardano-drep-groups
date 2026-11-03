@@ -1,8 +1,8 @@
 // Payload encoder for label 8416. It grows out of the conformance CBOR writer, which
-// stays a small definite length encoder owned by this package instead of a dependency
-// on cborg: the library ships no runtime dependencies, the grammar needed here is five
-// major types with shortest heads, and the exact byte output matters because native
-// script hashes are taken over the encoded bytes.
+// stays a small definite length encoder owned by this package. It is promoted instead of
+// taking cborg as a runtime dependency because cborg sorts map keys by their encoded bytes
+// and has no notion of the 64 byte metadatum chunks. The exact byte output matters because
+// native script hashes are taken over the encoded bytes.
 import { bytesToHex, concatBytes, hexToBytes } from './hex.js';
 import { scriptComplexity } from './nativeScript.js';
 import { MAX_EVENTS_PER_PAYLOAD, MAX_SCRIPT_DEPTH, MAX_SCRIPT_ENTRIES, MAX_SCRIPT_NODES } from './payload.js';
