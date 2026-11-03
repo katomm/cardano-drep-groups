@@ -30,7 +30,7 @@ import {
 } from '@evolution-sdk/evolution';
 import { runSchedule, type ScheduleStep } from '../../src/conformance/index.js';
 import { BIG_BUDGET } from '../../src/conformance/generate.js';
-import { MemoryStore, previewTransaction, runEngine, type Budget, type PreviewEvent } from '../../src/engine/index.js';
+import { MemoryStore, previewTransaction, runEngine, type Budget, type PreviewEvent } from '../../src/index.js';
 import { credKey } from '../../src/state.js';
 import { arrayItemOffsets, itemEnd, mapEntryOffsets, readHead, readUint, skipTags } from '../../src/cborSpan.js';
 import { nativeScriptHash } from '../../src/hash.js';
@@ -154,6 +154,11 @@ describe('DRep groups on a devnet', () => {
   const state = (): RegistryState => replay(inputs);
   const verdict = (txHash: string, index: number) =>
     state().verdicts.find((v) => v.ref.txHash === txHash && v.ref.index === index);
+  const judgedWithIndex = (txHash: string) =>
+    state().verdicts
+      .filter((v) => v.ref.txHash === txHash)
+      .sort((a, b) => a.ref.index - b.ref.index)
+      .map((v) => ({ index: v.ref.index, tag: v.tag, valid: v.valid, reason: v.reason }));
   const group = (id: EventRef) => state().groups.find((g) => g.id.txHash === id.txHash && g.id.index === id.index);
   const instance = (id: EventRef) =>
     state().instances.find((i) => i.joinId.txHash === id.txHash && i.joinId.index === id.index);
@@ -300,11 +305,7 @@ describe('DRep groups on a devnet', () => {
     expect(submitted.id).toBe(Bytes.toHex(bodyHash));
     const tx = await include(label, submitted.id, cbor, o.cert, o.payload);
     if (predicted) {
-      const judged = state().verdicts
-        .filter((v) => v.ref.txHash === tx.hash)
-        .map((v) => ({ index: v.ref.index, tag: v.tag, valid: v.valid, reason: v.reason }))
-        .sort((a, b) => a.index - b.index);
-      expect(predicted, `${label}: preview before submit equals the replay verdicts`).toEqual(judged);
+      expect(predicted, `${label}: preview before submit equals the replay verdicts`).toEqual(judgedWithIndex(tx.hash));
       tx.preview = predicted;
     }
     return tx;
@@ -614,19 +615,15 @@ describe('DRep groups on a devnet', () => {
   // majorityScript, as a tool would. Payment keys are the policy keys, role 3 keys
   // the members. send previews each payload transaction before submit and checks
   // the prediction against the replay verdicts once it is on chain.
-  const keyCred = (k: TestKey): Credential => ({ kind: 'key', hash: k.hash });
+  const memberCred = (k: TestKey): Credential => ({ kind: 'key', hash: k.hash });
   const hashes = (...ks: TestKey[]) => ks.map((k) => k.hash);
-  const judged = (txHash: string) =>
-    state().verdicts
-      .filter((v) => v.ref.txHash === txHash)
-      .sort((a, b) => a.ref.index - b.ref.index)
-      .map((v) => ({ tag: v.tag, valid: v.valid, reason: v.reason }));
+  const judged = (txHash: string) => judgedWithIndex(txHash).map(({ index: _index, ...v }) => v);
   const good = (tag: GroupEvent['tag']) => ({ tag, valid: true, reason: null });
   const bad = (tag: GroupEvent['tag'], reason: string) => ({ tag, valid: false, reason });
   const anchorOf = (url: string, fill: string): Anchor => ({ url, dataHash: fill.repeat(32) });
-  const regKey = (k: TestKey) => mustInclude(`reg_drep ${k.account}`, { cert: { kind: 'regDrep', credential: keyCred(k) }, listed: [k] });
+  const regKey = (k: TestKey) => mustInclude(`reg_drep ${k.account}`, { cert: { kind: 'regDrep', credential: memberCred(k) }, listed: [k] });
   const joinTx = (label: string, g: EventRef, member: TestKey) =>
-    mustInclude(label, { payload: encodePayload({ events: [{ tag: 'join', group: g, member: keyCred(member) }] }), listed: [member] });
+    mustInclude(label, { payload: encodePayload({ events: [{ tag: 'join', group: g, member: memberCred(member) }] }), listed: [member] });
 
   let group11: EventRef;
   let group12: EventRef;
@@ -643,7 +640,7 @@ describe('DRep groups on a devnet', () => {
     const founders = [D0, D1, D2, D3];
     const events: GroupEvent[] = [
       { tag: 'create', mode: 'permissioned', control: policy.hash, admission: policy.hash, profile: null },
-      ...founders.map((d): GroupEvent => ({ tag: 'join', group: { local: 0 }, member: keyCred(d) })),
+      ...founders.map((d): GroupEvent => ({ tag: 'join', group: { local: 0 }, member: memberCred(d) })),
       ...founders.map((_, i): GroupEvent => ({ tag: 'approve', join: { local: i + 1 } })),
     ];
     const payload = encodePayload({ events, scripts: [policy.script] });
@@ -655,7 +652,7 @@ describe('DRep groups on a devnet', () => {
     expect(group(group11)).toMatchObject({ mode: 'permissioned', control: policy.hash, admission: policy.hash, seq: 0n, status: 'active' });
     founders.forEach((d, i) => {
       expect(instance({ txHash: tx.hash, index: i + 1 })).toMatchObject({
-        member: keyCred(d), state: 'active', approvedAt: { txHash: tx.hash, index: i + 5 },
+        member: memberCred(d), state: 'active', approvedAt: { txHash: tx.hash, index: i + 5 },
       });
     });
     expect(state().scripts.has(policy.hash)).toBe(true);
@@ -669,7 +666,7 @@ describe('DRep groups on a devnet', () => {
       payload: encodePayload({
         events: [
           { tag: 'create', mode: 'permissioned', control: solo.hash, admission: solo.hash, profile: null },
-          { tag: 'join', group: { local: 0 }, member: keyCred(D0) },
+          { tag: 'join', group: { local: 0 }, member: memberCred(D0) },
           { tag: 'approve', join: { local: 1 } },
         ],
         scripts: [solo.script],
@@ -768,8 +765,8 @@ describe('DRep groups on a devnet', () => {
       payload: encodePayload({
         events: [
           { tag: 'create', mode: 'permissioned', control: control.hash, admission: admission.hash, profile: null },
-          { tag: 'join', group: { local: 0 }, member: keyCred(D1) },
-          { tag: 'join', group: { local: 0 }, member: keyCred(D2) },
+          { tag: 'join', group: { local: 0 }, member: memberCred(D1) },
+          { tag: 'join', group: { local: 0 }, member: memberCred(D2) },
           { tag: 'approve', join: { local: 1 } },
           { tag: 'approve', join: { local: 2 } },
         ],

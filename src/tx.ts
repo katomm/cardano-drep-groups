@@ -59,30 +59,40 @@ export function metadataOffset(cbor: Uint8Array, auxOff: number): number | null 
   return null;
 }
 
-// Raw bytes of the label 8416 value, undefined when absent or present twice.
-function labelPayload(cbor: Uint8Array, auxOff: number): { payload: Uint8Array | undefined; repeated: boolean } {
-  const md = metadataOffset(cbor, auxOff);
-  if (md === null || readHead(cbor, md).major !== 5) return { payload: undefined, repeated: false };
-  const hits = mapEntryOffsets(cbor, md).filter(([k]) => readUint(cbor, k) === GROUPS_LABEL);
-  const hit = hits.length === 1 ? hits[0] : undefined;
-  return { payload: hit ? cbor.slice(hit[1], itemEnd(cbor, hit[1])) : undefined, repeated: hits.length > 1 };
-}
-
-export function decodeTransaction(cbor: Uint8Array, pos: TxPosition): ChainTx {
-  // Proves the whole transaction is well-formed CBOR without trailing bytes,
-  // so every reader below works on valid spans.
+// The envelope [body, witnesses, is_valid, aux] of a transaction. Proves the whole item is
+// well-formed CBOR without trailing bytes, so every reader works on valid spans. Internal
+// helper, shared with txFacts.
+export function splitTransaction(cbor: Uint8Array): { bodyOff: number; witOff: number; validOff: number; auxOff: number; body: Map<number, number> } {
   if (itemEnd(cbor, 0) !== cbor.length) throw new Error('tx: trailing bytes');
   if (readHead(cbor, 0).major !== 4) throw new Error('tx: expected [body, witnesses, is_valid, aux]');
   const top = arrayItemOffsets(cbor, 0);
   if (top.length !== 4) throw new Error('tx: expected [body, witnesses, is_valid, aux]');
   const [rawBody, rawWit, validOff, auxOff] = top as [number, number, number, number];
   const bodyOff = skipTags(cbor, rawBody);
-  const witOff = skipTags(cbor, rawWit);
+  if (readHead(cbor, bodyOff).major !== 5) throw new Error('tx: malformed');
+  return { bodyOff, witOff: skipTags(cbor, rawWit), validOff, auxOff, body: uintKeyed(cbor, bodyOff) };
+}
+
+// The label 8416 entries of the auxiliary data, as [key, value] offsets. Internal helper, shared with txFacts.
+export function labelHits(cbor: Uint8Array, auxOff: number): Array<[number, number]> {
+  const md = metadataOffset(cbor, auxOff);
+  if (md === null || readHead(cbor, md).major !== 5) return [];
+  return mapEntryOffsets(cbor, md).filter(([k]) => readUint(cbor, k) === GROUPS_LABEL);
+}
+
+// Raw bytes of the label 8416 value, undefined when absent or present twice.
+function labelPayload(cbor: Uint8Array, auxOff: number): { payload: Uint8Array | undefined; repeated: boolean } {
+  const hits = labelHits(cbor, auxOff);
+  const hit = hits.length === 1 ? hits[0] : undefined;
+  return { payload: hit ? cbor.slice(hit[1], itemEnd(cbor, hit[1])) : undefined, repeated: hits.length > 1 };
+}
+
+export function decodeTransaction(cbor: Uint8Array, pos: TxPosition): ChainTx {
+  const { witOff, validOff, auxOff, body } = splitTransaction(cbor);
   const validHead = readHead(cbor, validOff);
-  if (readHead(cbor, bodyOff).major !== 5 || readHead(cbor, witOff).major !== 5 || validHead.major !== 7 || (validHead.info !== 20 && validHead.info !== 21)) {
+  if (readHead(cbor, witOff).major !== 5 || validHead.major !== 7 || (validHead.info !== 20 && validHead.info !== 21)) {
     throw new Error('tx: malformed');
   }
-  const body = uintKeyed(cbor, bodyOff);
   const wits = uintKeyed(cbor, witOff);
 
   const signersOff = body.get(14);

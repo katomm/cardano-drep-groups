@@ -3,13 +3,12 @@
 import { foreignJoinRefs } from './engine/classify.js';
 import { applyControl, type RuleObserver } from './engine/control.js';
 import { applyCredential } from './engine/credential.js';
-import { loadAndApply } from './engine/run.js';
+import { type CredentialUnit, loadAndApply, orderCredentialUnits } from './engine/run.js';
 import { routeTx } from './engine/route.js';
-import type { ChangeSet, CredentialInput, Keys, View } from './engine/types.js';
+import type { ChangeSet, Keys, View } from './engine/types.js';
 import { decodePayload } from './payload.js';
-import { comparePos } from './position.js';
 import { credKey, refKey } from './state.js';
-import type { ChainTx, Credential, DecodedEvent, EventRef, GroupEvent, IgnoredTx } from './types.js';
+import type { ChainTx, DecodedEvent, EventRef, GroupEvent, IgnoredTx } from './types.js';
 
 export interface PreviewDeps {
   // A bounded view of the committed state for `keys`. Every registration, member script
@@ -47,38 +46,28 @@ export async function previewTransaction(deps: PreviewDeps, tx: ChainTx): Promis
     (v, o) => applyControl(v, tx, routed, [], o));
 
   // The control step queued every membership event with the tx context, as the engine stores them.
-  const context = control.txContexts[0]?.context;
-  const bySubject = new Map<string, { c: Credential; inputs: CredentialInput[] }>();
-  for (const q of control.queued) {
+  const bySubject = new Map<string, CredentialUnit>();
+  if (control.queued.length > 0) {
+    const context = control.txContexts[0]?.context;
     if (!context) throw new Error('control step wrote no tx context');
-    const entry = bySubject.get(credKey(q.subject)) ?? { c: q.subject, inputs: [] };
-    entry.inputs.push({ kind: 'event', q, tx: context });
-    bySubject.set(credKey(q.subject), entry);
+    for (const q of control.queued) {
+      const k = credKey(q.subject);
+      const unit = bySubject.get(k) ?? { c: q.subject, inputs: [] };
+      unit.inputs.push({ kind: 'event', q, tx: context });
+      bySubject.set(k, unit);
+    }
   }
-  // Oldest first input, then credential key, as readyCredentials orders a batch.
-  const units = [...bySubject.values()].sort((a, b) => {
-    const pa = a.inputs[0] as Extract<CredentialInput, { kind: 'event' }>;
-    const pb = b.inputs[0] as Extract<CredentialInput, { kind: 'event' }>;
-    const ka = credKey(a.c);
-    const kb = credKey(b.c);
-    return comparePos(pa.q.at, pb.q.at) || (ka < kb ? -1 : ka > kb ? 1 : 0);
-  });
   const overlay: ChangeSet[] = [control];
-  for (const u of units) {
-    const before = [...overlay];
-    overlay.push(await loadAndApply((k) => deps.load(k), { c: u.c, inputs: u.inputs }, before, results,
-      (v, o) => applyCredential(v, u.c, u.inputs, before, o)));
+  for (const u of orderCredentialUnits(bySubject.values())) {
+    overlay.push(await loadAndApply((k) => deps.load(k), { c: u.c, inputs: u.inputs }, overlay, results,
+      (v, o) => applyCredential(v, u.c, u.inputs, overlay, o)));
   }
 
-  const byIndex = new Map<number, PreviewEvent>();
+  const events: PreviewEvent[] = new Array(decoded.events.length);
   for (const r of results) {
-    if (r.ref.txHash !== tx.txHash || byIndex.has(r.ref.index)) throw new Error(`unexpected rule result for ${refKey(r.ref)}`);
-    byIndex.set(r.ref.index, { index: r.ref.index, tag: r.tag as GroupEvent['tag'] | null, valid: r.valid, reason: r.reason });
+    if (r.ref.txHash !== tx.txHash || events[r.ref.index] !== undefined) throw new Error(`unexpected rule result for ${refKey(r.ref)}`);
+    events[r.ref.index] = { index: r.ref.index, tag: r.tag as GroupEvent['tag'] | null, valid: r.valid, reason: r.reason };
   }
-  const events = decoded.events.map((_, index) => {
-    const e = byIndex.get(index);
-    if (!e) throw new Error(`no rule result for event ${index}`);
-    return e;
-  });
+  for (let i = 0; i < events.length; i++) if (events[i] === undefined) throw new Error(`no rule result for event ${i}`);
   return { events };
 }

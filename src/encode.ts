@@ -5,14 +5,13 @@
 // native script hashes are taken over the encoded bytes.
 import { bytesToHex, concatBytes, hexToBytes } from './hex.js';
 import { scriptComplexity } from './nativeScript.js';
-import { MAX_EVENTS_PER_PAYLOAD, MAX_SCRIPT_DEPTH, MAX_SCRIPT_ENTRIES, MAX_SCRIPT_NODES } from './payload.js';
+import { HASH28, HASH32, MAX_CHUNK, MAX_EVENTS_PER_PAYLOAD, MAX_SCRIPT_DEPTH, MAX_SCRIPT_ENTRIES, MAX_SCRIPT_NODES } from './payload.js';
 import type { Anchor, Credential, GroupEvent, Hex, NativeScript, RefLike, UpdateChanges } from './types.js';
 
 export class EncodeError extends Error {}
 
 export type Cbor = number | bigint | Uint8Array | string | Cbor[] | Map<number, Cbor>;
 
-const MAX_CHUNK = 64;
 const UINT64_MAX = 2n ** 64n - 1n;
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
@@ -23,12 +22,10 @@ function head(out: number[], major: number, n: bigint): void {
   if (n < 24n) out.push(m | Number(n));
   else if (n < 0x100n) out.push(m | 24, Number(n));
   else if (n < 0x1_0000n) out.push(m | 25, Number(n >> 8n), Number(n & 0xffn));
-  else if (n < 0x1_0000_0000n) {
-    out.push(m | 26);
-    for (let i = 3; i >= 0; i--) out.push(Number((n >> BigInt(8 * i)) & 0xffn));
-  } else {
-    out.push(m | 27);
-    for (let i = 7; i >= 0; i--) out.push(Number((n >> BigInt(8 * i)) & 0xffn));
+  else {
+    const wide = n >= 0x1_0000_0000n;
+    out.push(m | (wide ? 27 : 26));
+    for (let i = wide ? 7 : 3; i >= 0; i--) out.push(Number((n >> BigInt(8 * i)) & 0xffn));
   }
 }
 
@@ -105,11 +102,10 @@ function hexBytes(hex: Hex, len: number, what: string): Uint8Array {
 function nativeScriptValue(s: NativeScript): Cbor {
   switch (s.type) {
     case 'sig':
-      return [0, hexBytes(s.keyHash, 28, 'key hash')];
+      return [0, hexBytes(s.keyHash, HASH28, 'key hash')];
     case 'all':
-      return [1, s.scripts.map(nativeScriptValue)];
     case 'any':
-      return [2, s.scripts.map(nativeScriptValue)];
+      return [s.type === 'all' ? 1 : 2, s.scripts.map(nativeScriptValue)];
     case 'nOfK':
       if (s.n < INT64_MIN || s.n > INT64_MAX) throw new EncodeError('threshold out of int64 range');
       return [3, s.n, s.scripts.map(nativeScriptValue)];
@@ -142,25 +138,27 @@ function refValue(r: RefLike, index: number): Cbor {
     if (safeIndex(r.local, 'local reference') >= index) throw new EncodeError('local reference must point to an earlier event');
     return [r.local];
   }
-  return [hexBytes(r.txHash, 32, 'transaction hash'), safeIndex(r.index, 'reference index')];
+  return [hexBytes(r.txHash, HASH32, 'transaction hash'), safeIndex(r.index, 'reference index')];
 }
 
 function credentialValue(c: Credential): Cbor {
-  return [c.kind === 'key' ? 0 : 1, hexBytes(c.hash, 28, 'credential hash')];
+  return [c.kind === 'key' ? 0 : 1, hexBytes(c.hash, HASH28, 'credential hash')];
 }
 
 function anchorValue(a: Anchor): Cbor {
   if (a.url.length === 0) throw new EncodeError('anchor url must not be empty');
-  return [chunkText(a.url), hexBytes(a.dataHash, 32, 'anchor data hash')];
+  return [chunkText(a.url), hexBytes(a.dataHash, HASH32, 'anchor data hash')];
 }
 
 function changesValue(c: UpdateChanges): Cbor {
   const m = new Map<number, Cbor>();
-  if (c.control !== undefined) m.set(0, hexBytes(c.control, 28, 'control hash'));
-  if (c.admission !== undefined) m.set(1, hexBytes(c.admission, 28, 'admission hash'));
+  if (c.control !== undefined) m.set(0, hexBytes(c.control, HASH28, 'control hash'));
+  if (c.admission !== undefined) m.set(1, hexBytes(c.admission, HASH28, 'admission hash'));
   if (c.profile !== undefined) m.set(2, anchorValue(c.profile));
   return m;
 }
+
+const JOIN_TAGS = { approve: 4, leave: 5, remove: 6 } as const;
 
 function eventValue(e: GroupEvent, index: number): Cbor {
   switch (e.tag) {
@@ -171,8 +169,8 @@ function eventValue(e: GroupEvent, index: number): Cbor {
       const v: Cbor[] = [
         0,
         e.mode === 'open' ? 0 : 1,
-        hexBytes(e.control, 28, 'control hash'),
-        e.admission === null ? [] : hexBytes(e.admission, 28, 'admission hash'),
+        hexBytes(e.control, HASH28, 'control hash'),
+        e.admission === null ? [] : hexBytes(e.admission, HASH28, 'admission hash'),
       ];
       if (e.profile !== null) v.push(anchorValue(e.profile));
       return v;
@@ -184,11 +182,9 @@ function eventValue(e: GroupEvent, index: number): Cbor {
     case 'join':
       return [3, refValue(e.group, index), credentialValue(e.member)];
     case 'approve':
-      return [4, refValue(e.join, index)];
     case 'leave':
-      return [5, refValue(e.join, index)];
     case 'remove':
-      return [6, refValue(e.join, index)];
+      return [JOIN_TAGS[e.tag], refValue(e.join, index)];
   }
 }
 

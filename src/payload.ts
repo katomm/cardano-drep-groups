@@ -5,7 +5,10 @@ import { parseNativeScript, scriptComplexity } from './nativeScript.js';
 import type { Anchor, Credential, DecodedEvent, DecodedPayload, GroupEvent, PublishedScript, RefLike, UpdateChanges } from './types.js';
 
 export const GROUPS_LABEL = 8416;
-const MAX_CHUNK = 64n;
+// Widths and chunk size of the label 8416 format, shared with the encoder.
+export const HASH28 = 28;
+export const HASH32 = 32;
+export const MAX_CHUNK = 64;
 // Spec A2 limits: events per payload, published script entries per payload,
 // and nodes and depth of one published script.
 export const MAX_EVENTS_PER_PAYLOAD = 64;
@@ -44,7 +47,7 @@ function hexAt(b: Uint8Array, off: number | undefined, len: bigint): string | nu
   return v ? bytesToHex(v) : null;
 }
 
-const hash28At = (b: Uint8Array, off: number | undefined): string | null => hexAt(b, off, 28n);
+const hash28At = (b: Uint8Array, off: number | undefined): string | null => hexAt(b, off, BigInt(HASH28));
 
 // Item offsets of an array, definite or indefinite, null for anything else.
 function arrayAt(b: Uint8Array, off: number | undefined): number[] | null {
@@ -60,7 +63,7 @@ function refAt(b: Uint8Array, off: number | undefined): RefLike | null {
     return local === null ? null : { local };
   }
   if (v.length === 2) {
-    const txHash = hexAt(b, v[0], 32n);
+    const txHash = hexAt(b, v[0], BigInt(HASH32));
     const index = indexAt(b, v[1]);
     return txHash === null || index === null ? null : { txHash, index };
   }
@@ -82,12 +85,12 @@ function anchorAt(b: Uint8Array, off: number | undefined): Anchor | null {
   const v = arrayAt(b, off);
   if (!v || v.length !== 2) return null;
   const chunks = arrayAt(b, v[0]);
-  const dataHash = hexAt(b, v[1], 32n);
+  const dataHash = hexAt(b, v[1], BigInt(HASH32));
   if (!chunks || chunks.length === 0 || dataHash === null) return null;
   let url = '';
   for (const c of chunks) {
     const h = readHead(b, c);
-    if (h.major !== 3 || h.indefinite || h.big > MAX_CHUNK) return null;
+    if (h.major !== 3 || h.indefinite || h.big > BigInt(MAX_CHUNK)) return null;
     try {
       url += utf8.decode(b.subarray(h.next, h.next + Number(h.big)));
     } catch {
@@ -184,7 +187,7 @@ function decodeScripts(b: Uint8Array, off: number): PublishedScript[] {
     const chunks = arrayAt(b, e);
     if (!chunks || chunks.length === 0) continue;
     const parts = chunks.map((c) => bytesAt(b, c));
-    if (!parts.every((p): p is Uint8Array => p !== null && BigInt(p.length) <= MAX_CHUNK)) continue;
+    if (!parts.every((p): p is Uint8Array => p !== null && p.length <= MAX_CHUNK)) continue;
     const bytes = concatBytes(parts);
     const script = parseNativeScript(bytes);
     if (!script) continue;

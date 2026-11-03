@@ -1,12 +1,13 @@
 // The scheduler of the incremental engine: one bounded run over a Store.
 import { decodePayload } from '../payload.js';
 import { afterTx, comparePos, endOf, type Pos } from '../position.js';
-import { refKey } from '../state.js';
+import { credKey, refKey } from '../state.js';
 import { foreignJoinRefs } from './classify.js';
 import { applyControl, type RuleObserver } from './control.js';
 import { applyCredential } from './credential.js';
 import { emptyChangeSet, stageKeys, type Step } from './lazyWorld.js';
 import { routeTx } from './route.js';
+import type { Credential } from '../types.js';
 import type { Budget, ChangeSet, CredentialInput, CursorUpdate, Keys, RunReport, Store, View } from './types.js';
 
 export interface RunOptions {
@@ -17,7 +18,17 @@ export interface RunOptions {
 type Unit = { change: ChangeSet; cursor: CursorUpdate };
 type Inputs = Parameters<typeof stageKeys>[1];
 
-const posOf = (x: CredentialInput): Pos => (x.kind === 'ledger' ? x.at : x.q.at);
+export const posOf = (x: CredentialInput): Pos => (x.kind === 'ledger' ? x.at : x.q.at);
+
+export interface CredentialUnit { c: Credential; inputs: CredentialInput[] }
+
+// The one ordering of credential units: inputs by position inside a unit (sorted in place),
+// units by their oldest input, then credential key. Shared by readyCredentials and previewTransaction.
+export function orderCredentialUnits(units: Iterable<CredentialUnit>): CredentialUnit[] {
+  const keyed = [...units].map((u) => ({ u, k: credKey(u.c), at: posOf(u.inputs.sort((a, b) => comparePos(posOf(a), posOf(b)))[0] as CredentialInput) }));
+  keyed.sort((a, b) => comparePos(a.at, b.at) || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
+  return keyed.map((x) => x.u);
+}
 
 type Observed = Parameters<RuleObserver>[0];
 

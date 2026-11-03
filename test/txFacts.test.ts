@@ -25,11 +25,11 @@ const metadata = (label = 8416) => encode(new Map([[label, payloadValue]]));
 const tagged = (label = 8416) => concatBytes([hexToBytes('d90103a100'), metadata(label)]);
 
 describe('inspectTransaction on Evolution transactions', () => {
-  const metadata = new Map([[8416n, TransactionMetadatum.fromCBORBytes(payload)]]);
+  const labelMap = new Map([[8416n, TransactionMetadatum.fromCBORBytes(payload)]]);
   const forms = {
-    conway: AuxiliaryData.conway({ metadata }),
-    shelleyMA: AuxiliaryData.shelleyMA({ metadata }),
-    shelley: AuxiliaryData.shelley({ metadata }),
+    conway: AuxiliaryData.conway({ metadata: labelMap }),
+    shelleyMA: AuxiliaryData.shelleyMA({ metadata: labelMap }),
+    shelley: AuxiliaryData.shelley({ metadata: labelMap }),
   };
   const build = (aux: AuxiliaryData.AuxiliaryData, hashOf: AuxiliaryData.AuxiliaryData = aux) =>
     Transaction.toCBORBytes(

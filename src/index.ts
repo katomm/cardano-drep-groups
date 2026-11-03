@@ -16,4 +16,5 @@ export { scriptComplexity } from './nativeScript.js';
 export { comparePos, endOf, type Pos, posOfCert, posOfEvent, posOfScripts } from './position.js';
 export { effectiveClose } from './effective.js';
 export { ALL_REASONS } from './rules.js';
+export { type Preview, type PreviewDeps, type PreviewEvent, previewTransaction } from './preview.js';
 export * from './engine/index.js';

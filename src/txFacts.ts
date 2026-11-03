@@ -1,8 +1,7 @@
 import { blake2b } from '@noble/hashes/blake2.js';
-import { arrayItemOffsets, itemEnd, mapEntryOffsets, readHead, readUint, skipTags } from './cborSpan.js';
+import { itemEnd, readHead, skipTags } from './cborSpan.js';
 import { bytesToHex } from './hex.js';
-import { GROUPS_LABEL } from './payload.js';
-import { metadataOffset } from './tx.js';
+import { labelHits, splitTransaction } from './tx.js';
 import type { Hex } from './types.js';
 
 export interface TxFacts {
@@ -20,25 +19,12 @@ function nonEmpty(b: Uint8Array, off: number | undefined): boolean {
   if (off === undefined) return false;
   const p = skipTags(b, off);
   const h = readHead(b, p);
-  if (h.major === 4) return arrayItemOffsets(b, p).length > 0;
-  if (h.major === 5) return mapEntryOffsets(b, p).length > 0;
-  return false;
+  if (h.major !== 4 && h.major !== 5) return false;
+  return h.indefinite ? b[h.next] !== 0xff : h.big > 0n;
 }
 
 export function inspectTransaction(cbor: Uint8Array): TxFacts {
-  if (itemEnd(cbor, 0) !== cbor.length) throw new Error('tx: trailing bytes');
-  if (readHead(cbor, 0).major !== 4) throw new Error('tx: expected [body, witnesses, is_valid, aux]');
-  const top = arrayItemOffsets(cbor, 0);
-  if (top.length !== 4) throw new Error('tx: expected [body, witnesses, is_valid, aux]');
-  const [rawBody, , , auxOff] = top as [number, number, number, number];
-  const bodyOff = skipTags(cbor, rawBody);
-  if (readHead(cbor, bodyOff).major !== 5) throw new Error('tx: malformed');
-
-  const fields = new Map<number, number>();
-  for (const [k, v] of mapEntryOffsets(cbor, bodyOff)) {
-    const key = readUint(cbor, k);
-    if (key !== null) fields.set(key, v);
-  }
+  const { auxOff, body: fields } = splitTransaction(cbor);
 
   const hashOff = fields.get(7);
   let auxDataHash: Hex | null = null;
@@ -51,13 +37,7 @@ export function inspectTransaction(cbor: Uint8Array): TxFacts {
   const auxHashMatches =
     auxDataHash !== null && hasAux && bytesToHex(blake2b(cbor.subarray(auxOff, itemEnd(cbor, auxOff)), { dkLen: 32 })) === auxDataHash;
 
-  let groupPayloads = 0;
-  if (hasAux) {
-    const md = metadataOffset(cbor, auxOff);
-    if (md !== null && readHead(cbor, md).major === 5) {
-      groupPayloads = mapEntryOffsets(cbor, md).filter(([k]) => readUint(cbor, k) === GROUPS_LABEL).length;
-    }
-  }
+  const groupPayloads = hasAux ? labelHits(cbor, auxOff).length : 0;
 
   return {
     auxDataHash,
