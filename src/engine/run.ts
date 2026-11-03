@@ -7,7 +7,7 @@ import { applyControl, type RuleObserver } from './control.js';
 import { applyCredential } from './credential.js';
 import { emptyChangeSet, stageKeys, type Step } from './lazyWorld.js';
 import { routeTx } from './route.js';
-import type { Budget, ChangeSet, CredentialInput, CursorUpdate, RunReport, Store, View } from './types.js';
+import type { Budget, ChangeSet, CredentialInput, CursorUpdate, Keys, RunReport, Store, View } from './types.js';
 
 export interface RunOptions {
   maxCommits?: number;           // stop after this many commits, for interruption tests
@@ -21,20 +21,25 @@ const posOf = (x: CredentialInput): Pos => (x.kind === 'ledger' ? x.at : x.q.at)
 
 type Observed = Parameters<RuleObserver>[0];
 
-// Loads the three key stages, each stage from the view of the one before, then runs the
-// unit once on the complete view. Both units report rule results only when done, they go
-// to `sink`, and the caller forwards them only once the commit that carries the unit has
-// succeeded.
-async function runUnit(
-  store: Store, inputs: Inputs, overlay: ChangeSet[], sink: Observed[],
+// Loads the three key stages through `load`, each stage from the view of the one before,
+// then runs the unit once on the complete view. Both units report rule results only when
+// done, they go to `sink`, and the caller forwards them only once the commit that carries
+// the unit has succeeded. Shared with previewTransaction, which loads without a store.
+export async function loadAndApply(
+  load: (keys: Keys) => Promise<View>, inputs: Inputs, overlay: ChangeSet[], sink: Observed[],
   apply: (view: View, observe: RuleObserver) => Step<ChangeSet>,
 ): Promise<ChangeSet> {
   let view: View | null = null;
-  for (const stage of [1, 2, 3] as const) view = await store.load(stageKeys(stage, inputs, view, overlay), overlay);
+  for (const stage of [1, 2, 3] as const) view = await load(stageKeys(stage, inputs, view, overlay));
   const step = apply(view as View, (r) => sink.push(r));
   if (!('done' in step)) throw new Error(`unit still needs keys after stage 3: ${JSON.stringify(step.need)}`);
   return step.done;
 }
+
+const runUnit = (
+  store: Store, inputs: Inputs, overlay: ChangeSet[], sink: Observed[],
+  apply: (view: View, observe: RuleObserver) => Step<ChangeSet>,
+): Promise<ChangeSet> => loadAndApply((k) => store.load(k, overlay), inputs, overlay, sink, apply);
 
 // One run, in order: an open recovery alone, otherwise one page of the group plane up to
 // L, then one batch of credential units up to min(G, END(R)). Every write checks `lease`.

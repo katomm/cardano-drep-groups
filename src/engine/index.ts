@@ -7,3 +7,4 @@ export { applyControl, type RuleObserver, txContextOf } from './control.js';
 export { applyCredential } from './credential.js';
 export { type EngineSnapshot, MemoryStore, type MemoryStoreSnapshot } from './memoryStore.js';
 export { type RunOptions, runEngine } from './run.js';
+export { type Preview, type PreviewDeps, type PreviewEvent, previewTransaction } from '../preview.js';
