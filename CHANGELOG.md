@@ -2,7 +2,7 @@
 
 All notable changes to this package. Versions follow [semantic versioning](https://semver.org). While the CIP is a draft, minor versions may contain breaking changes.
 
-## 0.3.0 (Unreleased)
+## 0.3.0 (2026-11-03)
 
 - **`encodePayload`**: builds the label 8416 payload bytes from events and scripts, with local references, 64 byte chunking of long anchor URLs and scripts, and the decoder's limits enforced. Throws `EncodeError`. `encodeNativeScript`, `encodeCbor`, `chunkText` and `chunkBytes` are exported with it.
 - **`majorityScript`**: n of k native script over lowercased, deduplicated and ascending sorted key hashes, so one key set gives one script hash.
