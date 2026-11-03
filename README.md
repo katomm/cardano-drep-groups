@@ -103,6 +103,43 @@ do report = await runEngine(store, budget, lease);
 while (report.more);
 ```
 
+## Building transactions
+
+The library also writes. `encodePayload` turns events into the exact bytes of the label `8416` value, so a tool never hand-writes CBOR. Every function here is pure and works offline.
+
+```ts
+import { encodePayload, majorityScript } from 'drep-groups';
+
+const control = majorityScript([keyHashA, keyHashB, keyHashC], 2); // 2 of 3
+const payload = encodePayload({
+  events: [
+    { tag: 'create', mode: 'open', control: control.hash, admission: null, profile: { url, dataHash } },
+    { tag: 'join', group: { local: 0 }, member: { kind: 'key', hash: founderKeyHash } },
+  ],
+  scripts: [control.script],
+});
+// payload goes into the transaction's metadata under label 8416
+```
+
+- **Events and limits**: `encodePayload` takes `{ events, scripts? }` and throws `EncodeError` for anything the decoder would ignore: no events or more than 64, more than 8 scripts, a script beyond the node or depth limit, malformed hashes, a mode that does not match the admission policy, an empty anchor URL. Long anchor URLs and scripts are split into 64 byte chunks for you (`chunkText`, `chunkBytes`). `encodeNativeScript(script)` gives the bytes to hash with `nativeScriptHash`, `encodeCbor` is the small definite length writer underneath.
+- **Local references**: a group does not exist before its `create` is on chain, so the founding transaction refers to it as `{ local: 0 }`, the index of the earlier event in the same payload. The same works for founder `join` events in the create transaction. A local reference must point to an earlier event. Everything after that transaction uses the full reference `{ txHash, index }`.
+- **Publish every new policy**: put the script of every policy a `create` or `update` introduces into `scripts` (key 2). The indexer can only judge a policy it has seen on chain, and a policy that appears in no payload and no registration makes the event invalid ("control policy unresolved" or "new control policy unresolved").
+- **Consent**: a `create` needs the signature of every key listed in its control and admission policies. An `update` that sets a new policy needs the signature of every newly listed key, on top of the current control policy. Keys that stay do not sign again. Add them as `required_signers` or collect their vkey witnesses before submitting.
+- **Majority scripts**: `majorityScript(keys, n)` returns an n of k script over key leaves as `{ script, bytes, hash, keys }`. Keys are lowercased, deduplicated and sorted ascending, so one key set and one threshold always give one script hash, whichever order the signers were collected in. It throws `EncodeError` for an invalid key or a threshold outside 1 to k.
+- **Approvals together with an update**: one transaction can carry `approve` events and a control `update`. Order the events with the approvals first, then the update, because events are judged in order and an approval after a policy change is checked against the new admission policy. The transaction must satisfy both policies, so collect the signatures of both.
+- **One control action at a time**: control actions carry `seq`. Read the group's current `seq` from the index, build the action with it and wait for it to be included before building the next one. A second action prepared in parallel becomes stale as soon as the first one is included, and a stale event is ignored. An `update` with an empty change set only increments `seq`, which cancels pending control actions on purpose.
+- **Bind the content before signing**: a signer should not trust a transaction because it came from the right tool. `inspectTransaction(cbor)` returns `TxFacts`: whether the auxiliary data hash in the body matches the metadata that is actually attached (`auxHashMatches`), how many label `8416` payloads it carries (`groupPayloads`) and whether it also holds certificates, withdrawals, votes or proposals. It throws a plain `Error` on malformed CBOR. Compare the decoded events with what the signer was told and refuse anything unexpected, for example a vote hidden next to a join.
+- **Preview before submit**: `previewTransaction(deps, tx)` judges every event of an unsubmitted transaction with the engine's own rules and writes nothing. It returns `{ ignored }` when the payload would not count at all, otherwise one `PreviewEvent` per event with `valid` and a `reason`. The preview is exact once `runEngine` reports `more: false` with the ledger frontier at or above the label frontier. While the ledger frontier lags, membership events between the two are still pending and the verdicts are inconclusive. `tx` is a `ChainTx` from `decodeTransaction`: set its position after everything you have ingested and fill `requiredSigners` and the vkey witnesses the final transaction will carry. `deps` reads your committed state:
+
+  ```ts
+  const preview = await previewTransaction({
+    load: (keys) => store.load(keys, []),        // a bounded view of the committed state
+    queuedJoins: (refs) => store.queuedJoins(refs, []),
+  }, tx);
+  ```
+
+- **Profile context**: the profile document is CIP-100 JSON-LD. Embed the context object inline in the profile document, copied from `context/drep-groups-v1.jsonld` in the package. The GitHub URL `https://github.com/katomm/cardano-drep-groups/blob/main/context/drep-groups-v1.jsonld` serves only as the term namespace. It defines `name`, `description`, `website`, `image`, `charter` and `paymentAddresses` with `address`, `purpose` and `treasuryScript`. The anchor hash is blake2b-256 over the raw document bytes.
+
 ## API
 
 | Function | Purpose |
@@ -115,6 +152,11 @@ while (report.more);
 | `groupIdToBech32(ref)`, `groupIdFromBech32(s)` | display form of a group id, bech32 with prefix `group` |
 | `nativeScriptHash(bytes)`, `keyHashOfVkey(vkey)` | Cardano hashes |
 | `refKey(ref)`, `credKey(credential)`, `orderInputs(inputs)` | helpers for keys and ordering |
+| `encodePayload({ events, scripts? })` | events and scripts to the label 8416 payload bytes, throws `EncodeError` on anything the decoder would ignore |
+| `encodeNativeScript(script)`, `encodeCbor(value)`, `chunkText(s)`, `chunkBytes(b)` | native script bytes, the definite length CBOR writer and the 64 byte chunking |
+| `majorityScript(keys, n)` | n of k script over sorted, deduplicated key hashes with its bytes and hash |
+| `inspectTransaction(cbor)` | `TxFacts` of a transaction: auxiliary data hash binding, label 8416 payload count, certificates, withdrawals, votes and proposals |
+| `previewTransaction(deps, tx)` | every event of an unsubmitted transaction judged with the engine's rules over committed state, nothing written |
 | `runEngine(store, budget, lease, opts?)` | one bounded incremental run over a `Store`: an open recovery, or new label transactions and credential inputs |
 | `MemoryStore` | complete in-memory `Store`, with ingest hooks, frontiers, a lease and `snapshot()` |
 | `effectiveClose(instance, dissolveAt, firstUnregAfterJoin, q?)` | when and why a membership ends: explicit close, dissolve or retirement, whichever comes first |

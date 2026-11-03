@@ -2,6 +2,15 @@
 
 All notable changes to this package. Versions follow [semantic versioning](https://semver.org). While the CIP is a draft, minor versions may contain breaking changes.
 
+## 0.3.0 (2026-11-03)
+
+- **`encodePayload`**: builds the label 8416 payload bytes from events and scripts, with local references, 64 byte chunking of long anchor URLs and scripts, and the decoder's limits enforced. Throws `EncodeError`. `encodeNativeScript`, `encodeCbor`, `chunkText` and `chunkBytes` are exported with it.
+- **`majorityScript`**: n of k native script over lowercased, deduplicated and ascending sorted key hashes, so one key set gives one script hash.
+- **`inspectTransaction`**: reads the facts a signer needs from transaction CBOR, such as whether the auxiliary data hash matches the attached metadata, how many label 8416 payloads it holds and whether it also carries certificates, withdrawals, votes or proposals.
+- **`previewTransaction`**: judges every event of an unsubmitted transaction with the engine's own rules over committed state and writes nothing. Exported with `PreviewDeps`, `PreviewEvent` and `Preview`.
+- **JSON-LD context** `context/drep-groups-v1.jsonld` for the group profile document, shipped in the package.
+- **README**: new section "Building transactions".
+
 ## 0.2.0 (2026-10-26)
 
 - **Limits** (breaking for oversized payloads): at most 64 events and 8 script entries per payload, at most 64 nodes and nesting depth 8 per payload script. More than 64 events ignores the whole payload, more than 8 script entries ignores only the scripts, an oversized script is skipped on its own. Exported as `MAX_EVENTS_PER_PAYLOAD`, `MAX_SCRIPT_ENTRIES`, `MAX_SCRIPT_NODES`, `MAX_SCRIPT_DEPTH` and `scriptComplexity`. Registration witness scripts have no complexity limit.

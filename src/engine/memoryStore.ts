@@ -6,6 +6,7 @@ import type { GroupVersion, StoredInstance } from '../rules.js';
 import { credKey, refKey } from '../state.js';
 import type { ChainTx, Credential, DecodedEvent, EventRef, Hex, LedgerInput, NativeScript } from '../types.js';
 import { classifyNewInput, mergeRecovery } from './classify.js';
+import { orderCredentialUnits, posOf } from './run.js';
 import {
   type AttributedVerdict, type ChangeSet, type CredentialInput, type CursorUpdate, type Frontiers, type Keys,
   LeaseLostError, type QueuedEvent, type ReadyCredential, type Recovery, type RecoveryState, type Store,
@@ -337,7 +338,7 @@ export class MemoryStore implements Store {
     const byCred = new Map<string, { c: Credential; inputs: CredentialInput[] }>();
     const add = (c: Credential, x: CredentialInput): void => {
       const k = credKey(c);
-      const at = x.kind === 'ledger' ? x.at : x.q.at;
+      const at = posOf(x);
       const applied = this.appliedThrough.get(k)?.at;
       if (comparePos(at, bound) > 0 || (applied && comparePos(at, applied) <= 0)) return;
       const entry = byCred.get(k) ?? { c, inputs: [] };
@@ -352,11 +353,7 @@ export class MemoryStore implements Store {
     }
     for (const l of this.ledger.values()) add(l.credential, { kind: 'ledger', at: posOfCert(l), input: l });
 
-    const posOf = (x: CredentialInput): Pos => (x.kind === 'ledger' ? x.at : x.q.at);
-    const ready = [...byCred.values()]
-      .filter((e) => this.isComplete(e.c, this))
-      .map((e) => ({ c: e.c, inputs: e.inputs.sort((a, b) => comparePos(posOf(a), posOf(b))) }))
-      .sort(byPos((e) => posOf(e.inputs[0] as CredentialInput), (e) => credKey(e.c)));
+    const ready = orderCredentialUnits([...byCred.values()].filter((e) => this.isComplete(e.c, this)));
     const out: ReadyCredential[] = [];
     let left = maxInputs;
     for (const e of ready) {
