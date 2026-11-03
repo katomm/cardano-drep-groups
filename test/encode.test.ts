@@ -8,6 +8,7 @@ import { bytesToHex } from '../src/hex.js';
 import { parseNativeScript } from '../src/nativeScript.js';
 import { decodePayload } from '../src/payload.js';
 import type { GroupEvent, NativeScript } from '../src/types.js';
+import { VECTORS } from '../vectors/definitions.js';
 import { buildPayload, ev, hashOf, K, nOfK as nOfKv, sig as sigv, T } from './helpers.js';
 
 const sig = (n: number): NativeScript => ({ type: 'sig', keyHash: K(n) });
@@ -77,6 +78,42 @@ describe('encodePayload', () => {
     for (const [expected, actual] of cases) expect(bytesToHex(actual)).toBe(bytesToHex(expected));
   });
 
+  it('re-encodes every vector payload to the same bytes', () => {
+    let compared = 0;
+    const skipped: string[] = [];
+    for (const v of VECTORS) {
+      for (const i of v.inputs) {
+        if (i.kind !== 'tx' || !i.tx.payload) continue;
+        const d = decodePayload(i.tx.payload);
+        // Deliberately malformed payloads (duplicate keys, rejected events, skipped scripts) have no PayloadInput form.
+        if (!d || d.events.some((e) => !e.ok)) { skipped.push(v.name); continue; }
+        const events = d.events.map((e) => (e.ok ? e.event : create));
+        const scripts = d.scripts.map((x) => x.script);
+        let again: Uint8Array;
+        try {
+          again = encodePayload({ events, scripts });
+        } catch (err) {
+          // The encoder refuses what the decoder only flags per event, such as a local reference to itself.
+          if (!(err instanceof EncodeError)) throw err;
+          skipped.push(v.name);
+          continue;
+        }
+        if (bytesToHex(again) !== bytesToHex(i.tx.payload)) { skipped.push(v.name); continue; }
+        compared++;
+      }
+    }
+    expect(compared).toBe(60);
+    expect([...new Set(skipped)]).toEqual([
+      'founder joins through a local ref, local refs to the same or a later index fail',
+      'phase-2-invalid transaction, wrong version and duplicate map key are ignored',
+      'decoding: malformed events keep their index',
+      'an unknown payload key with a deep value is ignored and the events count',
+      'a duplicate unknown key in the payload map ignores the whole payload',
+      'a duplicate key in an update map invalidates only that event',
+      'script list: junk entries between valid scripts are skipped',
+    ]);
+  });
+
   it('chunks a URL without splitting a code point', () => {
     for (const url of ['https://example.org/x' + 'ü'.repeat(40), 'https://example.org/' + '€'.repeat(30), 'https://example.org/' + '😀'.repeat(20)]) {
       const chunks = chunkText(url);
@@ -109,6 +146,11 @@ describe('encodePayload', () => {
     expect(d2.scripts).toHaveLength(2);
   });
 
+  it('accepts exactly 64 events', () => {
+    const d = decodePayload(encodePayload({ events: Array.from({ length: 64 }, () => create) }))!;
+    expect(d.events).toHaveLength(64);
+  });
+
   it('throws EncodeError beyond the limits', () => {
     const bad = (p: Parameters<typeof encodePayload>[0]) => expect(() => encodePayload(p)).toThrow(EncodeError);
     bad({ events: [] });
@@ -128,6 +170,13 @@ describe('encodePayload', () => {
     bad({ events: [createWithProfile('')] });
     bad({ events: [create], scripts: [{ type: 'sig', keyHash: 'abcd' }] });
     expect(() => encodeCbor(1.5)).toThrow(EncodeError);
+    bad({ events: [{ tag: 'dissolve', group: ref, seq: -1n }] });
+    bad({ events: [{ tag: 'update', group: ref, seq: -1n, changes: {} }] });
+    bad({ events: [{ tag: 'dissolve', group: ref, seq: 2n ** 64n }] });
+    bad({ events: [{ tag: 'approve', join: { txHash: T(1), index: -1 } }] });
+    bad({ events: [{ tag: 'approve', join: { txHash: T(1), index: 1.5 } }] });
+    bad({ events: [{ tag: 'approve', join: { txHash: T(1), index: 2 ** 53 } }] });
+    bad({ events: [create, { tag: 'approve', join: { local: -1 } }] });
   });
 
   it('emits map keys ascending whatever the insertion order', () => {

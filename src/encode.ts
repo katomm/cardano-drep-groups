@@ -127,14 +127,22 @@ export function encodeNativeScript(s: NativeScript): Uint8Array {
 
 export interface PayloadInput { events: GroupEvent[]; scripts?: NativeScript[] }
 
+function safeIndex(n: number, what: string): number {
+  if (!Number.isSafeInteger(n) || n < 0) throw new EncodeError(`${what} must be a non-negative safe integer`);
+  return n;
+}
+
+function seqValue(n: bigint): bigint {
+  if (typeof n !== 'bigint' || n < 0n || n > UINT64_MAX) throw new EncodeError('seq must be an unsigned 64 bit integer');
+  return n;
+}
+
 function refValue(r: RefLike, index: number): Cbor {
   if ('local' in r) {
-    if (!Number.isSafeInteger(r.local) || r.local < 0 || r.local >= index) {
-      throw new EncodeError('local reference must point to an earlier event');
-    }
+    if (safeIndex(r.local, 'local reference') >= index) throw new EncodeError('local reference must point to an earlier event');
     return [r.local];
   }
-  return [hexBytes(r.txHash, 32, 'transaction hash'), r.index];
+  return [hexBytes(r.txHash, 32, 'transaction hash'), safeIndex(r.index, 'reference index')];
 }
 
 function credentialValue(c: Credential): Cbor {
@@ -170,9 +178,9 @@ function eventValue(e: GroupEvent, index: number): Cbor {
       return v;
     }
     case 'update':
-      return [1, refValue(e.group, index), e.seq, changesValue(e.changes)];
+      return [1, refValue(e.group, index), seqValue(e.seq), changesValue(e.changes)];
     case 'dissolve':
-      return [2, refValue(e.group, index), e.seq];
+      return [2, refValue(e.group, index), seqValue(e.seq)];
     case 'join':
       return [3, refValue(e.group, index), credentialValue(e.member)];
     case 'approve':
