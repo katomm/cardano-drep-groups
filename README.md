@@ -17,7 +17,7 @@ This package holds the rules in code: it decodes the metadata, checks every sign
 - **Profile**: name, description, website, logo, a link to the charter and optional payment addresses, stored as a CIP-100 document and referenced by hash.
 - **Website verification**: a group can prove a domain through a well-known file.
 
-Affiliation only. Groups do not vote together and membership never changes a delegation.
+The protocol records affiliation only: a group holds no voting power, casts no votes on chain and never changes a delegation. Members may agree to vote together, as a party or council would, and each of them still casts its own vote with its own DRep.
 
 ## How it works
 
