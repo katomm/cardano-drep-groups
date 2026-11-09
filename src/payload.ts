@@ -15,7 +15,8 @@ export const MAX_EVENTS_PER_PAYLOAD = 64;
 export const MAX_SCRIPT_ENTRIES = 8;
 export const MAX_SCRIPT_NODES = 64;
 export const MAX_SCRIPT_DEPTH = 8;
-const utf8 = new TextDecoder('utf-8', { fatal: true });
+// ignoreBOM keeps a leading U+FEFF of a chunk, so chunks concatenate unchanged.
+const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 // All readers below work on offsets into the payload bytes. decodePayload
 // checks once that the whole payload is well-formed CBOR, so these readers

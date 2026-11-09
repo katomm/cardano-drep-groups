@@ -10,7 +10,7 @@ const FILE = new URL('../vectors/vectors.json', import.meta.url);
 function serialize(defs: VectorDef[]): unknown {
   return {
     version: 1,
-    compare: 'groups and instances exactly, verdicts by ref and valid. reason texts are informative.',
+    compare: 'groups (including the profile anchor URL and hash) and instances exactly, verdicts by ref and valid. reason texts are informative.',
     vectors: defs.map((d) => ({
       name: d.name,
       inputs: d.inputs.map((x) =>
@@ -64,7 +64,7 @@ function summarize(s: RegistryState) {
   return {
     groups: s.groups.map((g) => ({
       id: refKey(g.id), status: g.status, seq: g.seq.toString(), mode: g.mode,
-      control: g.control, admission: g.admission, profileUrl: g.profile ? g.profile.url : null,
+      control: g.control, admission: g.admission, profileUrl: g.profile ? g.profile.url : null, profileHash: g.profile ? g.profile.dataHash : null,
     })),
     instances: s.instances.map((i) => ({ joinId: refKey(i.joinId), group: refKey(i.group), member: credKey(i.member), state: i.state, reason: i.reason })),
     verdicts: s.verdicts.map((v) => ({ ref: refKey(v.ref), valid: v.valid, reason: v.reason })),
