@@ -9,6 +9,15 @@ const ctrl = nOfK(1, sig(K(1)), sig(K(2)));
 const other = nOfK(1, sig(K(3)));
 const create = ev.create(0, hashOf(ctrl), null);
 
+describe('anchor URL chunks', () => {
+  it('concatenates chunks unchanged, keeping a U+FEFF at a chunk start', () => {
+    const e = [0, 0, hexToBytes(K(1)), [], [['https://example.org/', '\uFEFFprofile.json'], new Uint8Array(32)]];
+    const d = decodePayload(buildPayload([e]));
+    const ev0 = d?.events[0];
+    expect(ev0?.ok && ev0.event.tag === 'create' ? ev0.event.profile?.url : null).toBe('https://example.org/\uFEFFprofile.json');
+  });
+});
+
 describe('decodePayload layer 1', () => {
   it('rejects wrong version, missing or empty events and non maps', () => {
     expect(decodePayload(buildPayload([create], [], 2))).toBeNull();

@@ -6,7 +6,7 @@ import {
   nOfK, ref, regIn, scriptBytes, scriptCred, sig, T, txIn, unregIn,
 } from '../test/helpers.js';
 
-export interface GroupExpect { id: string; status: string; seq: string; mode: string; control: string; admission: string | null; profileUrl: string | null }
+export interface GroupExpect { id: string; status: string; seq: string; mode: string; control: string; admission: string | null; profileUrl: string | null; profileHash: string | null }
 export interface InstanceExpect { joinId: string; group: string; member: string; state: string; reason: string | null }
 export interface VerdictExpect { ref: string; valid: boolean; reason: string | null }
 export interface VectorDef {
@@ -24,7 +24,7 @@ const M = K(0x50);
 const reg = regIn(keyCred(M), T(0x40), 5);
 
 const G = (tx: string, o: Partial<GroupExpect> = {}): GroupExpect => ({
-  id: `${tx}#0`, status: 'active', seq: '0', mode: 'open', control: C, admission: null, profileUrl: null, ...o,
+  id: `${tx}#0`, status: 'active', seq: '0', mode: 'open', control: C, admission: null, profileUrl: null, profileHash: null, ...o,
 });
 const I = (tx: string, state: string, reason: string | null = null, o: { index?: number; group?: string; member?: string } = {}): InstanceExpect => ({
   joinId: `${tx}#${o.index ?? 0}`, group: o.group ?? `${T(1)}#0`, member: o.member ?? `key:${M}`, state, reason,
@@ -66,6 +66,17 @@ const deepValue = (() => {
 })();
 const scriptsEntry = [encode(2), encode([chunk64(scriptBytes(ctrl))])];
 const dupUpdateMap = concatBytes([hexToBytes('a2'), encode(0), encode(kb(C)), encode(0), encode(kb(C))]);
+
+// Limit cases: updates with consecutive seq values, filler scripts that only
+// fill key 2, and scripts at and just over the node and depth limits.
+const manyUpdates = (n: number): unknown[][] => Array.from({ length: n }, (_, i) => ev.update(local(0), i, new Map()));
+const fillerScripts = (n: number): unknown[][] => Array.from({ length: n }, (_, i) => sig(K(0x80 + i)));
+// Every key listed in a new policy must sign (consent rule), so the signers are all leaf keys.
+const leafKeys = (n: number): string[] => Array.from({ length: n }, (_, i) => K(0x90 + i));
+const nodes64 = anyOf(...leafKeys(63).map(sig));
+const nodes65 = anyOf(...leafKeys(64).map(sig));
+const depth8 = [1, 2, 3, 4, 5, 6, 7].reduce((x) => allOf(x), sig(K(1)));
+const depth9 = [1, 2, 3, 4, 5, 6, 7, 8].reduce((x) => allOf(x), sig(K(1)));
 
 export const VECTORS: VectorDef[] = [
   {
@@ -329,5 +340,89 @@ export const VECTORS: VectorDef[] = [
       }),
     ],
     expect: { groups: [G(T(1), { mode: 'permissioned', admission: A })], instances: [], verdicts: [V(T(1), true)] },
+  },
+  {
+    name: 'a profile anchor URL is concatenated unchanged, a U+FEFF at a chunk start stays',
+    inputs: [
+      txIn({
+        hash: T(1), h: 10, rs: ALL,
+        payload: buildPayload([[0, 0, kb(C), [], [['https://example.org/', '\uFEFFprofile', '.json'], kb(T(0x77))]]], [ctrl]),
+      }),
+    ],
+    expect: {
+      groups: [G(T(1), { profileUrl: 'https://example.org/\uFEFFprofile.json', profileHash: T(0x77) })],
+      instances: [],
+      verdicts: [V(T(1), true)],
+    },
+  },
+  {
+    name: 'events limit: exactly 64 events all count',
+    inputs: [txIn({ hash: T(1), h: 10, rs: ALL, payload: buildPayload([ev.create(0, C, null), ...manyUpdates(63)], [ctrl]) })],
+    expect: {
+      groups: [G(T(1), { seq: '63' })],
+      instances: [],
+      verdicts: Array.from({ length: 64 }, (_, i) => V(T(1), true, null, i)),
+    },
+  },
+  {
+    name: 'events limit: 65 events ignore the whole payload',
+    inputs: [txIn({ hash: T(1), h: 10, rs: ALL, payload: buildPayload([ev.create(0, C, null), ...manyUpdates(64)], [ctrl]) })],
+    expect: { groups: [], instances: [], verdicts: [] },
+  },
+  {
+    name: 'script entries: exactly 8 entries are usable',
+    inputs: [txIn({ hash: T(1), h: 10, rs: ALL, payload: buildPayload([ev.create(0, C, null)], [ctrl, ...fillerScripts(7)]) })],
+    expect: { groups: [G(T(1))], instances: [], verdicts: [V(T(1), true)] },
+  },
+  {
+    name: 'script entries: 9 entries ignore key 2, an event that needs those scripts is invalid',
+    inputs: [txIn({ hash: T(1), h: 10, rs: ALL, payload: buildPayload([ev.create(0, C, null)], [ctrl, ...fillerScripts(8)]) })],
+    expect: { groups: [], instances: [], verdicts: [V(T(1), false, 'control policy unresolved')] },
+  },
+  {
+    name: 'script complexity: a script of exactly 64 nodes and one of exactly depth 8 resolve',
+    inputs: [createWith(T(1), 10, nodes64, leafKeys(63)), createWith(T(2), 11, depth8, [K(1)])],
+    expect: {
+      groups: [G(T(1), { control: hashOf(nodes64) }), G(T(2), { control: hashOf(depth8) })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), true)],
+    },
+  },
+  {
+    name: 'script complexity: 65 nodes or depth 9 are skipped, the dependent events are invalid',
+    inputs: [createWith(T(1), 10, nodes65, leafKeys(64)), createWith(T(2), 11, depth9, [K(1)])],
+    expect: {
+      groups: [],
+      instances: [],
+      verdicts: [V(T(1), false, 'control policy unresolved'), V(T(2), false, 'control policy unresolved')],
+    },
+  },
+  {
+    name: 'duplicate payload keys: 0x09 and 0x1809 are the same unsigned key, the payload is ignored',
+    inputs: [
+      txIn({ hash: T(1), h: 10, rs: ALL, payload: rawPayload(encode([ev.create(0, C, null)]), [...scriptsEntry, hexToBytes('09'), encode(1), hexToBytes('1809'), encode(2)]) }),
+    ],
+    expect: { groups: [], instances: [], verdicts: [] },
+  },
+  {
+    name: 'payload keys: negative 0x20 and 0x3800 are different unknown keys, the payload is processed',
+    inputs: [
+      txIn({ hash: T(1), h: 10, rs: ALL, payload: rawPayload(encode([ev.create(0, C, null)]), [...scriptsEntry, hexToBytes('20'), encode(1), hexToBytes('3800'), encode(2)]) }),
+    ],
+    expect: { groups: [G(T(1))], instances: [], verdicts: [V(T(1), true)] },
+  },
+  {
+    name: 'indefinite length payload map and event array are accepted',
+    inputs: [
+      txIn({
+        hash: T(1), h: 10, rs: ALL,
+        payload: concatBytes([
+          hexToBytes('bf'), encode(0), encode(1), encode(1),
+          hexToBytes('9f'), encode(ev.create(0, C, null)), concatBytes([hexToBytes('9f'), encode(1), encode(local(0)), encode(0), hexToBytes('a0ff')]), hexToBytes('ff'),
+          encode(2), encode([chunk64(scriptBytes(ctrl))]), hexToBytes('ff'),
+        ]),
+      }),
+    ],
+    expect: { groups: [G(T(1), { seq: '1' })], instances: [], verdicts: [V(T(1), true, null, 0), V(T(1), true, null, 1)] },
   },
 ];

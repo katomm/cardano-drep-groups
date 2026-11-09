@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "compare": "groups and instances exactly, verdicts by ref and valid. reason texts are informative.",
+  "compare": "groups (including the profile anchor URL and hash) and instances exactly, verdicts by ref and valid. reason texts are informative.",
   "vectors": [
     {
       "name": "open group: create, join, leave",
@@ -75,7 +75,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -194,7 +195,8 @@
             "mode": "permissioned",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": "79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a7",
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -425,7 +427,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -523,7 +526,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
@@ -640,7 +644,8 @@
             "mode": "open",
             "control": "d0fa6682b387abe2aa437770e6d127d8b2a09302cc0156379bad0e2a",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
@@ -772,7 +777,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -902,7 +908,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -998,7 +1005,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -1108,7 +1116,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -1251,7 +1260,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -1421,7 +1431,8 @@
             "mode": "permissioned",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": "79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a7",
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -1554,7 +1565,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -1615,7 +1627,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
@@ -1711,7 +1724,8 @@
             "mode": "open",
             "control": "d441227553a0f1a965fee7d60a0f724b368dd1bddbc208730fccebcf",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           },
           {
             "id": "0303030303030303030303030303030303030303030303030303030303030303#0",
@@ -1720,7 +1734,8 @@
             "mode": "open",
             "control": "3530cc9ae7f2895111a99b7a02184dd7c0cea7424f1632d73951b1d7",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           },
           {
             "id": "0505050505050505050505050505050505050505050505050505050505050505#0",
@@ -1729,7 +1744,8 @@
             "mode": "open",
             "control": "07dcacb78897bd115928cc1bf1b92a3de1bcec11f72519d7eb36ab38",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
@@ -1835,7 +1851,8 @@
             "mode": "open",
             "control": "ddf13110c2f335fb6781b938c04eae574f57cb053b0bdec30cf55a0d",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           },
           {
             "id": "0303030303030303030303030303030303030303030303030303030303030303#0",
@@ -1844,7 +1861,8 @@
             "mode": "open",
             "control": "8ab0f53f9abb3d6a63428240ec4b0d9330684ead54313a05ba81624d",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
@@ -1963,7 +1981,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
@@ -2037,7 +2056,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
@@ -2108,7 +2128,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [
@@ -2181,7 +2202,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
@@ -2290,7 +2312,8 @@
             "mode": "open",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": null,
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
@@ -2343,13 +2366,889 @@
             "mode": "permissioned",
             "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
             "admission": "79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a7",
-            "profileUrl": null
+            "profileUrl": null,
+            "profileHash": null
           }
         ],
         "instances": [],
         "verdicts": [
           {
             "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": true,
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "a profile anchor URL is concatenated unchanged, a U+FEFF at a chunk start stays",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181850000581c4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c8082837468747470733a2f2f6578616d706c652e6f72672f6aefbbbf70726f66696c65652e6a736f6e582077777777777777777777777777777777777777777777777777777777777777770281825840830302838200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202025824020202028200581c03030303030303030303030303030303030303030303030303030303",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [
+          {
+            "id": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "status": "active",
+            "seq": "0",
+            "mode": "open",
+            "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
+            "admission": null,
+            "profileUrl": "https://example.org/﻿profile.json",
+            "profileHash": "7777777777777777777777777777777777777777777777777777777777777777"
+          }
+        ],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": true,
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "events limit: exactly 64 events all count",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a30001019840840000581c4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c808401810000a08401810001a08401810002a08401810003a08401810004a08401810005a08401810006a08401810007a08401810008a08401810009a0840181000aa0840181000ba0840181000ca0840181000da0840181000ea0840181000fa08401810010a08401810011a08401810012a08401810013a08401810014a08401810015a08401810016a08401810017a0840181001818a0840181001819a084018100181aa084018100181ba084018100181ca084018100181da084018100181ea084018100181fa0840181001820a0840181001821a0840181001822a0840181001823a0840181001824a0840181001825a0840181001826a0840181001827a0840181001828a0840181001829a084018100182aa084018100182ba084018100182ca084018100182da084018100182ea084018100182fa0840181001830a0840181001831a0840181001832a0840181001833a0840181001834a0840181001835a0840181001836a0840181001837a0840181001838a0840181001839a084018100183aa084018100183ba084018100183ca084018100183da084018100183ea00281825840830302838200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202025824020202028200581c03030303030303030303030303030303030303030303030303030303",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [
+          {
+            "id": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "status": "active",
+            "seq": "63",
+            "mode": "open",
+            "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
+            "admission": null,
+            "profileUrl": null,
+            "profileHash": null
+          }
+        ],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#1",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#2",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#3",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#4",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#5",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#6",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#7",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#8",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#9",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#10",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#11",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#12",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#13",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#14",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#15",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#16",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#17",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#18",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#19",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#20",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#21",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#22",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#23",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#24",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#25",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#26",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#27",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#28",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#29",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#30",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#31",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#32",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#33",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#34",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#35",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#36",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#37",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#38",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#39",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#40",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#41",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#42",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#43",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#44",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#45",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#46",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#47",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#48",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#49",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#50",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#51",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#52",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#53",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#54",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#55",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#56",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#57",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#58",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#59",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#60",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#61",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#62",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#63",
+            "valid": true,
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "events limit: 65 events ignore the whole payload",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a30001019841840000581c4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c808401810000a08401810001a08401810002a08401810003a08401810004a08401810005a08401810006a08401810007a08401810008a08401810009a0840181000aa0840181000ba0840181000ca0840181000da0840181000ea0840181000fa08401810010a08401810011a08401810012a08401810013a08401810014a08401810015a08401810016a08401810017a0840181001818a0840181001819a084018100181aa084018100181ba084018100181ca084018100181da084018100181ea084018100181fa0840181001820a0840181001821a0840181001822a0840181001823a0840181001824a0840181001825a0840181001826a0840181001827a0840181001828a0840181001829a084018100182aa084018100182ba084018100182ca084018100182da084018100182ea084018100182fa0840181001830a0840181001831a0840181001832a0840181001833a0840181001834a0840181001835a0840181001836a0840181001837a0840181001838a0840181001839a084018100183aa084018100183ba084018100183ca084018100183da084018100183ea084018100183fa00281825840830302838200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202025824020202028200581c03030303030303030303030303030303030303030303030303030303",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [],
+        "instances": [],
+        "verdicts": []
+      }
+    },
+    {
+      "name": "script entries: exactly 8 entries are usable",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840000581c4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c800288825840830302838200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202025824020202028200581c030303030303030303030303030303030303030303030303030303038158208200581c808080808080808080808080808080808080808080808080808080808158208200581c818181818181818181818181818181818181818181818181818181818158208200581c828282828282828282828282828282828282828282828282828282828158208200581c838383838383838383838383838383838383838383838383838383838158208200581c848484848484848484848484848484848484848484848484848484848158208200581c858585858585858585858585858585858585858585858585858585858158208200581c86868686868686868686868686868686868686868686868686868686",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [
+          {
+            "id": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "status": "active",
+            "seq": "0",
+            "mode": "open",
+            "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
+            "admission": null,
+            "profileUrl": null,
+            "profileHash": null
+          }
+        ],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": true,
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "script entries: 9 entries ignore key 2, an event that needs those scripts is invalid",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840000581c4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c800289825840830302838200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202025824020202028200581c030303030303030303030303030303030303030303030303030303038158208200581c808080808080808080808080808080808080808080808080808080808158208200581c818181818181818181818181818181818181818181818181818181818158208200581c828282828282828282828282828282828282828282828282828282828158208200581c838383838383838383838383838383838383838383838383838383838158208200581c848484848484848484848484848484848484848484848484848484848158208200581c858585858585858585858585858585858585858585858585858585858158208200581c868686868686868686868686868686868686868686868686868686868158208200581c87878787878787878787878787878787878787878787878787878787",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": false,
+            "reason": "control policy unresolved"
+          }
+        ]
+      }
+    },
+    {
+      "name": "script complexity: a script of exactly 64 nodes and one of exactly depth 8 resolve",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "90909090909090909090909090909090909090909090909090909090",
+            "91919191919191919191919191919191919191919191919191919191",
+            "92929292929292929292929292929292929292929292929292929292",
+            "93939393939393939393939393939393939393939393939393939393",
+            "94949494949494949494949494949494949494949494949494949494",
+            "95959595959595959595959595959595959595959595959595959595",
+            "96969696969696969696969696969696969696969696969696969696",
+            "97979797979797979797979797979797979797979797979797979797",
+            "98989898989898989898989898989898989898989898989898989898",
+            "99999999999999999999999999999999999999999999999999999999",
+            "9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a",
+            "9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b",
+            "9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c",
+            "9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d",
+            "9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+            "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+            "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+            "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+            "a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4",
+            "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+            "a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6",
+            "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7",
+            "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8",
+            "a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "abababababababababababababababababababababababababababab",
+            "acacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+            "adadadadadadadadadadadadadadadadadadadadadadadadadadadad",
+            "aeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeae",
+            "afafafafafafafafafafafafafafafafafafafafafafafafafafafaf",
+            "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+            "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+            "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
+            "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
+            "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
+            "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+            "b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7",
+            "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8",
+            "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+            "babababababababababababababababababababababababababababa",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+            "bdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+            "bebebebebebebebebebebebebebebebebebebebebebebebebebebebe",
+            "bfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf",
+            "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2",
+            "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+            "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+            "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5",
+            "c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6",
+            "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7",
+            "c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8",
+            "c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9",
+            "cacacacacacacacacacacacacacacacacacacacacacacacacacacaca",
+            "cbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcb",
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "cececececececececececececececececececececececececececece"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840000581ccbf7e2dabd6a9bf07b212d22a994184d003ee44b4363f04ddbb1057f800281982058408202983f8200581c909090909090909090909090909090909090909090909090909090908200581c9191919191919191919191919191919191919191919191915840919191918200581c929292929292929292929292929292929292929292929292929292928200581c9393939393939393939393939393939393939393939393935840939393938200581c949494949494949494949494949494949494949494949494949494948200581c9595959595959595959595959595959595959595959595955840959595958200581c969696969696969696969696969696969696969696969696969696968200581c9797979797979797979797979797979797979797979797975840979797978200581c989898989898989898989898989898989898989898989898989898988200581c9999999999999999999999999999999999999999999999995840999999998200581c9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a8200581c9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b58409b9b9b9b8200581c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c8200581c9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d58409d9d9d9d8200581c9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e8200581c9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f58409f9f9f9f8200581ca0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a08200581ca1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a15840a1a1a1a18200581ca2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a28200581ca3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a35840a3a3a3a38200581ca4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a48200581ca5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a55840a5a5a5a58200581ca6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a68200581ca7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a75840a7a7a7a78200581ca8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a88200581ca9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a95840a9a9a9a98200581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa8200581cabababababababababababababababababababababababab5840abababab8200581cacacacacacacacacacacacacacacacacacacacacacacacacacacacac8200581cadadadadadadadadadadadadadadadadadadadadadadadad5840adadadad8200581caeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeae8200581cafafafafafafafafafafafafafafafafafafafafafafafaf5840afafafaf8200581cb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b08200581cb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b15840b1b1b1b18200581cb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b28200581cb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b35840b3b3b3b38200581cb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b48200581cb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b55840b5b5b5b58200581cb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b68200581cb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b75840b7b7b7b78200581cb8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b88200581cb9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b95840b9b9b9b98200581cbabababababababababababababababababababababababababababa8200581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5840bbbbbbbb8200581cbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc8200581cbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd5840bdbdbdbd8200581cbebebebebebebebebebebebebebebebebebebebebebebebebebebebe8200581cbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf5840bfbfbfbf8200581cc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c08200581cc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c15840c1c1c1c18200581cc2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c28200581cc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c35840c3c3c3c38200581cc4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c48200581cc5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c55840c5c5c5c58200581cc6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c68200581cc7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c75840c7c7c7c78200581cc8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c88200581cc9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c95840c9c9c9c98200581ccacacacacacacacacacacacacacacacacacacacacacacacacacacaca8200581ccbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcb5840cbcbcbcb8200581ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc8200581ccdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd5824cdcdcdcd8200581ccececececececececececececececececececececececececececece",
+          "witnessScriptsHex": []
+        },
+        {
+          "kind": "tx",
+          "txHash": "0202020202020202020202020202020202020202020202020202020202020202",
+          "blockHeight": 11,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840000581cf5ab562a73b3fa2cf713a6238a0d70f6d99375159a14848858cbfff18002818158358201818201818201818201818201818201818201818200581c01010101010101010101010101010101010101010101010101010101",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [
+          {
+            "id": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "status": "active",
+            "seq": "0",
+            "mode": "open",
+            "control": "cbf7e2dabd6a9bf07b212d22a994184d003ee44b4363f04ddbb1057f",
+            "admission": null,
+            "profileUrl": null,
+            "profileHash": null
+          },
+          {
+            "id": "0202020202020202020202020202020202020202020202020202020202020202#0",
+            "status": "active",
+            "seq": "0",
+            "mode": "open",
+            "control": "f5ab562a73b3fa2cf713a6238a0d70f6d99375159a14848858cbfff1",
+            "admission": null,
+            "profileUrl": null,
+            "profileHash": null
+          }
+        ],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0202020202020202020202020202020202020202020202020202020202020202#0",
+            "valid": true,
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "script complexity: 65 nodes or depth 9 are skipped, the dependent events are invalid",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "90909090909090909090909090909090909090909090909090909090",
+            "91919191919191919191919191919191919191919191919191919191",
+            "92929292929292929292929292929292929292929292929292929292",
+            "93939393939393939393939393939393939393939393939393939393",
+            "94949494949494949494949494949494949494949494949494949494",
+            "95959595959595959595959595959595959595959595959595959595",
+            "96969696969696969696969696969696969696969696969696969696",
+            "97979797979797979797979797979797979797979797979797979797",
+            "98989898989898989898989898989898989898989898989898989898",
+            "99999999999999999999999999999999999999999999999999999999",
+            "9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a",
+            "9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b",
+            "9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c",
+            "9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d",
+            "9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+            "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+            "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+            "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+            "a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4",
+            "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+            "a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6",
+            "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7",
+            "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8",
+            "a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "abababababababababababababababababababababababababababab",
+            "acacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+            "adadadadadadadadadadadadadadadadadadadadadadadadadadadad",
+            "aeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeae",
+            "afafafafafafafafafafafafafafafafafafafafafafafafafafafaf",
+            "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+            "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+            "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
+            "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
+            "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
+            "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+            "b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7",
+            "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8",
+            "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+            "babababababababababababababababababababababababababababa",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+            "bdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+            "bebebebebebebebebebebebebebebebebebebebebebebebebebebebe",
+            "bfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf",
+            "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+            "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2",
+            "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+            "c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4",
+            "c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5",
+            "c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6",
+            "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7",
+            "c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8",
+            "c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9",
+            "cacacacacacacacacacacacacacacacacacacacacacacacacacacaca",
+            "cbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcb",
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "cececececececececececececececececececececececececececece",
+            "cfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcf"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840000581c5b6a9dc3be38181c88c8f89a77f490ef13d5dea6f7bd337bc5465c4980028198215840820298408200581c909090909090909090909090909090909090909090909090909090908200581c9191919191919191919191919191919191919191919191915840919191918200581c929292929292929292929292929292929292929292929292929292928200581c9393939393939393939393939393939393939393939393935840939393938200581c949494949494949494949494949494949494949494949494949494948200581c9595959595959595959595959595959595959595959595955840959595958200581c969696969696969696969696969696969696969696969696969696968200581c9797979797979797979797979797979797979797979797975840979797978200581c989898989898989898989898989898989898989898989898989898988200581c9999999999999999999999999999999999999999999999995840999999998200581c9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a8200581c9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b58409b9b9b9b8200581c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c8200581c9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d58409d9d9d9d8200581c9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e8200581c9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f58409f9f9f9f8200581ca0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a08200581ca1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a15840a1a1a1a18200581ca2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a28200581ca3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a35840a3a3a3a38200581ca4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a48200581ca5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a55840a5a5a5a58200581ca6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a68200581ca7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a75840a7a7a7a78200581ca8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a88200581ca9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a95840a9a9a9a98200581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa8200581cabababababababababababababababababababababababab5840abababab8200581cacacacacacacacacacacacacacacacacacacacacacacacacacacacac8200581cadadadadadadadadadadadadadadadadadadadadadadadad5840adadadad8200581caeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeae8200581cafafafafafafafafafafafafafafafafafafafafafafafaf5840afafafaf8200581cb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b08200581cb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b15840b1b1b1b18200581cb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b28200581cb3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b35840b3b3b3b38200581cb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b48200581cb5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b55840b5b5b5b58200581cb6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b68200581cb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b75840b7b7b7b78200581cb8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b88200581cb9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b95840b9b9b9b98200581cbabababababababababababababababababababababababababababa8200581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb5840bbbbbbbb8200581cbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc8200581cbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd5840bdbdbdbd8200581cbebebebebebebebebebebebebebebebebebebebebebebebebebebebe8200581cbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf5840bfbfbfbf8200581cc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c08200581cc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c15840c1c1c1c18200581cc2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c28200581cc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c35840c3c3c3c38200581cc4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c48200581cc5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c55840c5c5c5c58200581cc6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c68200581cc7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c75840c7c7c7c78200581cc8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c88200581cc9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c95840c9c9c9c98200581ccacacacacacacacacacacacacacacacacacacacacacacacacacacaca8200581ccbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcb5840cbcbcbcb8200581ccccccccccccccccccccccccccccccccccccccccccccccccccccccccc8200581ccdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd5840cdcdcdcd8200581ccececececececececececececececececececececececececececece8200581ccfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcf44cfcfcfcf",
+          "witnessScriptsHex": []
+        },
+        {
+          "kind": "tx",
+          "txHash": "0202020202020202020202020202020202020202020202020202020202020202",
+          "blockHeight": 11,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840000581c1c3ff68bd8c3037d38c2a9498eee657ae2d442d0d45708ef114350408002818158388201818201818201818201818201818201818201818201818200581c01010101010101010101010101010101010101010101010101010101",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": false,
+            "reason": "control policy unresolved"
+          },
+          {
+            "ref": "0202020202020202020202020202020202020202020202020202020202020202#0",
+            "valid": false,
+            "reason": "control policy unresolved"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate payload keys: 0x09 and 0x1809 are the same unsigned key, the payload is ignored",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a500010181840000581c4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c800281825840830302838200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202025824020202028200581c030303030303030303030303030303030303030303030303030303030901180902",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [],
+        "instances": [],
+        "verdicts": []
+      }
+    },
+    {
+      "name": "payload keys: negative 0x20 and 0x3800 are different unknown keys, the payload is processed",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a500010181840000581c4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c800281825840830302838200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202025824020202028200581c030303030303030303030303030303030303030303030303030303032001380002",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [
+          {
+            "id": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "status": "active",
+            "seq": "0",
+            "mode": "open",
+            "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
+            "admission": null,
+            "profileUrl": null,
+            "profileHash": null
+          }
+        ],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": true,
+            "reason": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "indefinite length payload map and event array are accepted",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "bf0001019f840000581c4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c809f01810000a0ffff0281825840830302838200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202025824020202028200581c03030303030303030303030303030303030303030303030303030303ff",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [
+          {
+            "id": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "status": "active",
+            "seq": "1",
+            "mode": "open",
+            "control": "4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c",
+            "admission": null,
+            "profileUrl": null,
+            "profileHash": null
+          }
+        ],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#1",
             "valid": true,
             "reason": null
           }

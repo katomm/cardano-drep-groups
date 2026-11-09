@@ -2,6 +2,12 @@
 
 All notable changes to this package. Versions follow [semantic versioning](https://semver.org). While the CIP is a draft, minor versions may contain breaking changes.
 
+## 0.3.1 (2026-11-09)
+
+- **Anchor URL chunks** are concatenated unchanged: a leading U+FEFF at the start of a chunk is kept instead of being dropped by the text decoder, as the CIP text requires.
+- **Test vectors** now compare the full profile anchor (`profileHash` next to `profileUrl`), and 10 new cases pin the anchor URL across chunks, the limits at and above their bounds (64 and 65 events, 8 and 9 script entries, 64 and 65 script nodes, depth 8 and 9), duplicate payload key equality (`0x09` against `0x1809`, `0x20` against `0x3800`) and indefinite length payload maps and event arrays.
+- **README**: group members may agree to vote together, each DRep still casts its own vote.
+
 ## 0.3.0 (2026-11-03)
 
 - **`encodePayload`**: builds the label 8416 payload bytes from events and scripts, with local references, 64 byte chunking of long anchor URLs and scripts, and the decoder's limits enforced. Throws `EncodeError`. `encodeNativeScript`, `encodeCbor`, `chunkText` and `chunkBytes` are exported with it.

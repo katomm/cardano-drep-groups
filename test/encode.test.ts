@@ -102,7 +102,7 @@ describe('encodePayload', () => {
         compared++;
       }
     }
-    expect(compared).toBe(60);
+    expect(compared).toBe(64);
     expect([...new Set(skipped)]).toEqual([
       'founder joins through a local ref, local refs to the same or a later index fail',
       'phase-2-invalid transaction, wrong version and duplicate map key are ignored',
@@ -111,6 +111,13 @@ describe('encodePayload', () => {
       'a duplicate unknown key in the payload map ignores the whole payload',
       'a duplicate key in an update map invalidates only that event',
       'script list: junk entries between valid scripts are skipped',
+      'a profile anchor URL is concatenated unchanged, a U+FEFF at a chunk start stays',
+      'events limit: 65 events ignore the whole payload',
+      'script entries: 9 entries ignore key 2, an event that needs those scripts is invalid',
+      'script complexity: 65 nodes or depth 9 are skipped, the dependent events are invalid',
+      'duplicate payload keys: 0x09 and 0x1809 are the same unsigned key, the payload is ignored',
+      'payload keys: negative 0x20 and 0x3800 are different unknown keys, the payload is processed',
+      'indefinite length payload map and event array are accepted',
     ]);
   });
 
