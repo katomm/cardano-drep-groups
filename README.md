@@ -149,7 +149,7 @@ const payload = encodePayload({
 | `decodePayload(bytes)` | one payload to its events and published scripts, `null` when the payload is ignored |
 | `parseNativeScript(bytes)`, `evaluateNativeScript(script, ctx)`, `collectKeyHashes(script)` | native scripts with exact CBOR types and ledger semantics |
 | `checkPaymentAddress(entry, network, scripts)` | checks a profile payment address: `invalid`, `declared` or `script-controlled` |
-| `groupIdToBech32(ref)`, `groupIdFromBech32(s)` | display form of a group id, bech32 with prefix `drep_group` |
+| `groupIdToBech32(ref)`, `groupIdFromBech32(s)` | display form of a group id, bech32 with prefix `drep_group` over 33 bytes (`tx_hash` and a one byte event index, so an index above 255 throws) |
 | `nativeScriptHash(bytes)`, `keyHashOfVkey(vkey)` | Cardano hashes |
 | `refKey(ref)`, `credKey(credential)`, `orderInputs(inputs)` | helpers for keys and ordering |
 | `encodePayload({ events, scripts? })` | events and scripts to the label 8416 payload bytes, throws `EncodeError` on anything the decoder would ignore |

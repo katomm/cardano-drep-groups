@@ -2,6 +2,10 @@
 
 All notable changes to this package. Versions follow [semantic versioning](https://semver.org). While the CIP is a draft, minor versions may contain breaking changes.
 
+## 0.5.0 (unreleased)
+
+- **Group id display form** uses a one byte index as in CIP-0129 (breaking for stored ids): 33 bytes `tx_hash || uint8(event_index)`. `groupIdToBech32` throws for an index above 255 and `groupIdFromBech32` rejects the 34 byte form. The on-chain data is unchanged.
+
 ## 0.4.0 (2026-11-10)
 
 - **Group id prefix** (breaking): the bech32 display form of a group id uses the prefix `drep_group` instead of `group`, following the CIP-0005 naming of `drep_script` and `cc_hot`. `groupIdFromBech32` rejects the old prefix. The bytes and the on-chain data are unchanged.
