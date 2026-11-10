@@ -65,6 +65,7 @@ function summarize(s: RegistryState) {
     groups: s.groups.map((g) => ({
       id: refKey(g.id), status: g.status, seq: g.seq.toString(), mode: g.mode,
       control: g.control, admission: g.admission, profileUrl: g.profile ? g.profile.url : null, profileHash: g.profile ? g.profile.dataHash : null,
+      resignedControl: g.resignedControl, resignedAdmission: g.resignedAdmission,
     })),
     instances: s.instances.map((i) => ({ joinId: refKey(i.joinId), group: refKey(i.group), member: credKey(i.member), state: i.state, reason: i.reason })),
     verdicts: s.verdicts.map((v) => ({ ref: refKey(v.ref), valid: v.valid, reason: v.reason })),

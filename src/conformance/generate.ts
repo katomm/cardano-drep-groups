@@ -5,6 +5,7 @@
 import type { Budget } from '../engine/types.js';
 import { nativeScriptHash } from '../hash.js';
 import { hexToBytes } from '../hex.js';
+import { evaluateNativeScript, parseNativeScript } from '../nativeScript.js';
 import { credKey } from '../state.js';
 import { type Cbor, encodeCbor } from './cbor.js';
 import { Rng } from './rng.js';
@@ -43,7 +44,22 @@ const IH = 4000n;
 
 const keyHash = (n: number): Hex => n.toString(16).padStart(2, '0').repeat(28);
 
-interface MGroup { ref: EventRef; mode: 'open' | 'permissioned'; control: Script; admission: Script | null; seq: bigint; dissolved: boolean }
+// Keys that satisfy a role's policy while the keys that resigned from the role do not
+// count, or null when the remaining keys cannot satisfy it.
+const satisfiers = (s: Script, resigned: readonly Hex[]): Hex[] | null => {
+  if (!s.satisfy.some((k) => resigned.includes(k))) return s.satisfy;
+  const rest = s.listed.filter((k) => !resigned.includes(k));
+  const parsed = parseNativeScript(s.bytes);
+  return parsed && evaluateNativeScript(parsed, { signers: new Set(rest), invalidBefore: IB, invalidHereafter: IH }) ? rest : null;
+};
+
+// Keys a role lists that have not resigned from it.
+const serving = (s: Script | null, resigned: readonly Hex[]): Hex[] => (s?.listed ?? []).filter((k) => !resigned.includes(k));
+
+interface MGroup {
+  ref: EventRef; mode: 'open' | 'permissioned'; control: Script; admission: Script | null; seq: bigint; dissolved: boolean;
+  resignedControl: Hex[]; resignedAdmission: Hex[];
+}
 interface MMember { cred: Credential; script: Script | null; registered: boolean; witnessKnown: boolean }
 interface MJoin { ref: EventRef; group: MGroup; member: MMember; state: 'pending' | 'active' | 'closed' }
 
@@ -270,7 +286,7 @@ class ChainBuilder {
     if (this.rng.chance(0.2)) ev.push([[`ipfs://g${ref.index}`], hexToBytes(keyHash(0x77).padEnd(64, '0'))]);
     d.events.push(ev);
     if (flaw === 'none' && !d.ignored && d.validity) {
-      this.groups.push({ ref, mode, control, admission, seq: 0n, dissolved: false });
+      this.groups.push({ ref, mode, control, admission, seq: 0n, dissolved: false, resignedControl: [], resignedAdmission: [] });
     }
     return true;
   }
@@ -301,6 +317,10 @@ class ChainBuilder {
     } else target = this.groupRef(d, 'known');
     if (!target) return false;
     const g = target.g;
+    // A group whose control policy its remaining keys cannot satisfy is frozen. Only flaws
+    // that fail before the control check are written for it.
+    const controlSigners = g ? satisfiers(g.control, g.resignedControl) : null;
+    if (g && !controlSigners && flaw !== 'unsigned' && flaw !== 'stale' && flaw !== 'dissolved') return false;
     const changes = new Map<number, Cbor>();
     let next: { control?: Script; admission?: Script } = {};
     if (flaw === 'keyless') {
@@ -333,11 +353,12 @@ class ChainBuilder {
       }
     }
     const seq = g ? (flaw === 'stale' ? (g.seq === 0n || this.rng.chance(0.5) ? g.seq + 1n : g.seq - 1n) : g.seq) : BigInt(this.rng.int(3));
-    if (g && flaw !== 'unsigned') this.sign(d, g.control.satisfy);
-    // Consent is per role: a key is new when the current policy of the same role does not list it.
-    const newTo = (p: Script | undefined, current: Script | null | undefined): Hex[] =>
-      (p?.listed ?? []).filter((k) => !(current?.listed ?? []).includes(k));
-    const added = [...newTo(next.control, g?.control), ...newTo(next.admission, g?.admission)];
+    if (g && flaw !== 'unsigned') this.sign(d, controlSigners ?? g.control.satisfy);
+    // Consent is per role: a key is new when the current policy of the same role does not
+    // list it or it resigned from the role.
+    const newTo = (p: Script | undefined, current: Script | null | undefined, resigned: Hex[] = []): Hex[] =>
+      (p?.listed ?? []).filter((k) => !serving(current ?? null, resigned).includes(k));
+    const added = [...newTo(next.control, g?.control, g?.resignedControl), ...newTo(next.admission, g?.admission, g?.resignedAdmission)];
     if (flaw === 'newKeys') {
       // The new keys sign as vkey witnesses only, which is no consent.
       if (!added.some((k) => !d.rs.has(k))) return false;
@@ -346,19 +367,29 @@ class ChainBuilder {
     d.events.push([1, target.ref, seq, changes]);
     if ((flaw === 'none' || flaw === 'flood') && g && !d.ignored) {
       g.seq += 1n;
-      if (next.control) g.control = next.control;
-      if (next.admission) g.admission = next.admission;
+      if (next.control) {
+        g.control = next.control;
+        g.resignedControl = [];
+      }
+      if (next.admission) {
+        g.admission = next.admission;
+        g.resignedAdmission = [];
+      }
     }
     return true;
   }
 
-  private dissolve(d: Draft, flaw: 'none' | 'stale' | 'unsigned', g0?: MGroup): boolean {
+  // `frozen` writes the dissolve of a frozen group as well, signed by keys that no longer
+  // count, and leaves the model as it is.
+  private dissolve(d: Draft, flaw: 'none' | 'stale' | 'unsigned', g0?: MGroup, frozen = false): boolean {
     const target = g0 ? { ref: this.ref(g0.ref, d), g: g0 } : this.groupRef(d, 'known');
     if (!target?.g) return false;
     const g = target.g;
-    if (flaw !== 'unsigned') this.sign(d, g.control.satisfy);
+    const signers = satisfiers(g.control, g.resignedControl);
+    if (!signers && flaw === 'none' && !frozen) return false;
+    if (flaw !== 'unsigned') this.sign(d, signers ?? g.control.satisfy);
     d.events.push([2, target.ref, flaw === 'stale' ? g.seq + 1n : g.seq]);
-    if (flaw === 'none' && !d.ignored) {
+    if (flaw === 'none' && signers && !d.ignored) {
       g.dissolved = true;
       for (const j of this.joins) if (j.group === g) j.state = 'closed';
     }
@@ -456,7 +487,11 @@ class ChainBuilder {
     const j = this.rng.pick(pool);
     if (flaw !== 'unsigned') {
       if (tag === 'leave') this.memberAuth(d, j.member);
-      else if (j.group.admission) this.sign(d, j.group.admission.satisfy);
+      else if (j.group.admission) {
+        const signers = satisfiers(j.group.admission, j.group.resignedAdmission);
+        if (!signers && flaw === 'none') return false;
+        this.sign(d, signers ?? j.group.admission.satisfy);
+      }
     }
     d.events.push([code, this.ref(j.ref, d)]);
     if (flaw === 'none' && !d.ignored && d.validity) {
@@ -466,9 +501,43 @@ class ChainBuilder {
     return true;
   }
 
+  // A resign. `notListed` names a key no role of the group lists or one that resigned from
+  // every role listing it, `resignWitnessOnly` a serving key that signs as a vkey witness only.
+  private resign(d: Draft, flaw: 'none' | 'notListed' | 'resignWitnessOnly', g0?: MGroup): boolean {
+    const target = g0 ? { ref: this.ref(g0.ref, d), g: g0 } : this.groupRef(d, 'known');
+    if (!target?.g) return false;
+    const g = target.g;
+    const candidates = [...new Set([...serving(g.control, g.resignedControl), ...serving(g.admission, g.resignedAdmission)])];
+    let key: Hex;
+    if (flaw === 'notListed') {
+      const gone = [...g.resignedControl, ...g.resignedAdmission].filter((k) => !candidates.includes(k));
+      const unlisted = Array.from({ length: 12 }, (_, i) => keyHash(i + 1))
+        .filter((k) => !g.control.listed.includes(k) && !(g.admission?.listed ?? []).includes(k));
+      const pool = gone.length > 0 && this.rng.chance(0.5) ? gone : unlisted;
+      if (pool.length === 0) return false;
+      key = this.rng.pick(pool);
+      d.rs.add(key);
+    } else {
+      if (candidates.length === 0) return false;
+      key = this.rng.pick(candidates);
+      if (flaw === 'resignWitnessOnly') {
+        if (d.rs.has(key)) return false;
+        d.wk.add(key);
+      } else d.rs.add(key);
+    }
+    d.events.push([7, target.ref, hexToBytes(key)]);
+    if (flaw === 'none' && !d.ignored && !g.dissolved) {
+      g.seq += 1n;
+      const add = (xs: Hex[]): Hex[] => (xs.includes(key) ? xs : [...xs, key].sort());
+      if (g.control.listed.includes(key)) g.resignedControl = add(g.resignedControl);
+      if (g.admission?.listed.includes(key)) g.resignedAdmission = add(g.resignedAdmission);
+    }
+    return true;
+  }
+
   private malformed(d: Draft): boolean {
     d.events.push(this.rng.weighted<Cbor>([
-      [3, [9]], [3, 'x'], [2, 7], [1, [0, 5, hexToBytes(keyHash(1)), []]], [1, [3, [0]]], [1, [4]],
+      [3, [9]], [3, 'x'], [2, 7], [1, [0, 5, hexToBytes(keyHash(1)), []]], [1, [3, [0]]], [1, [4]], [1, [7, [0]]],
     ]));
     return true;
   }
@@ -497,6 +566,9 @@ class ChainBuilder {
       [2.5, () => this.dissolve(d, 'none')],
       [0.4, () => this.dissolve(d, 'stale')],
       [0.4, () => this.dissolve(d, 'unsigned')],
+      [1.5, () => this.resign(d, 'none')],
+      [0.8, () => this.resign(d, 'notListed')],
+      [0.8, () => this.resign(d, 'resignWitnessOnly')],
       [14, () => this.join(d, 'none')],
       [1.2, () => this.join(d, 'unsigned')],
       [1, () => this.join(d, 'unresolved')],
@@ -525,9 +597,9 @@ class ChainBuilder {
   }
 
   // Same tx folds: a create with membership and control events by local ref, a join with
-  // its transitions, dissolves next to joins and leaves in both orders.
+  // its transitions, dissolves next to joins, leaves and resigns in both orders.
   private combo(d: Draft): void {
-    const kind = this.rng.int(8);
+    const kind = this.rng.int(10);
     if (kind === 0 || kind === 1) {
       const before = this.groups.length;
       if (!this.create(d, 'none') || this.groups.length === before) return this.randomEvent(d);
@@ -576,6 +648,21 @@ class ChainBuilder {
       for (let i = 0; i < n; i++) {
         const before = g.seq;
         if (!this.update(d, 'flood') || g.seq === before) break;
+      }
+      return;
+    }
+    if (kind === 7 || kind === 8) {
+      // A resign and a dissolve of the same group. A resign first can freeze the group, a
+      // dissolve first leaves the resign a dissolved group.
+      const gs = this.activeGroups();
+      if (gs.length === 0) return this.randomEvent(d);
+      const g = this.rng.pick(gs);
+      if (kind === 7) {
+        if (!this.resign(d, 'none', g)) return this.randomEvent(d);
+        this.dissolve(d, 'none', g, true);
+      } else {
+        if (!this.dissolve(d, 'none', g)) return this.randomEvent(d);
+        this.resign(d, 'none', g);
       }
       return;
     }
@@ -673,7 +760,7 @@ class ChainBuilder {
     const d = this.draft();
     if (d.ignored) return false;
     this.certs(d.pos, [{ kind: 'unreg', m: j.member }]);
-    this.dissolve(d, 'none', j.group);
+    if (!this.dissolve(d, 'none', j.group)) this.malformed(d);
     this.finish(d);
     return true;
   }

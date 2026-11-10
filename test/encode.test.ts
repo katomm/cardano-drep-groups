@@ -38,6 +38,8 @@ const ALL_EVENTS: GroupEvent[] = [
   { tag: 'approve', join: ref },
   { tag: 'leave', join: { local: 0 } },
   { tag: 'remove', join: ref },
+  { tag: 'resign', group: ref, key: K(6) },
+  { tag: 'resign', group: { local: 0 }, key: K(6) },
 ];
 
 describe('encodePayload', () => {

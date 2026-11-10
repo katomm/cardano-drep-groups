@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { nativeScriptHash } from '../src/hash.js';
 import { concatBytes, hexToBytes } from '../src/hex.js';
 import { decodePayload } from '../src/payload.js';
-import { buildPayload, buildPayloadRaw, chunk64, ev, hashOf, K, local, nOfK, ref, scriptBytes, sig, T } from './helpers.js';
+import { buildPayload, buildPayloadRaw, chunk64, ev, hashOf, K, kb, local, nOfK, ref, scriptBytes, sig, T } from './helpers.js';
 
 const ctrl = nOfK(1, sig(K(1)), sig(K(2)));
 const other = nOfK(1, sig(K(3)));
@@ -96,6 +96,11 @@ describe('decodePayload layer 3', () => {
       event: { tag: 'create', mode: 'permissioned', control: K(1), admission: K(2), profile: { url: 'https://x.test/g.json', dataHash: T(9) } },
     });
     expect(p?.events[3]).toEqual({ ok: true, event: { tag: 'join', group: { local: 0 }, member: { kind: 'key', hash: K(5) } } });
+  });
+  it('decodes a resign and rejects one of the wrong shape', () => {
+    const p = decodePayload(buildPayload([ev.resign(local(0), K(5)), [7, [0]], [7, [0], new Uint8Array(27)], [7, [0], kb(K(5)), 0]]));
+    expect(p?.events[0]).toEqual({ ok: true, event: { tag: 'resign', group: { local: 0 }, key: K(5) } });
+    expect(p?.events.slice(1)).toEqual(Array(3).fill({ ok: false, reason: 'resign: bad shape' }));
   });
   it('keeps the index of a malformed event between valid ones', () => {
     const p = decodePayload(buildPayload([create, [3, 'junk'], ev.leave(ref(T(1), 0))]));

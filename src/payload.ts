@@ -172,6 +172,12 @@ function decodeEvent(b: Uint8Array, off: number): GroupEvent | string {
       if (!join) return 'bad join reference';
       return { tag: tag === 4n ? 'approve' : tag === 5n ? 'leave' : 'remove', join };
     }
+    case 7n: {
+      const group = v.length === 3 ? refAt(b, v[1]) : null;
+      const key = group ? hash28At(b, v[2]) : null;
+      if (!group || !key) return 'resign: bad shape';
+      return { tag: 'resign', group, key };
+    }
     default:
       return 'unknown event tag';
   }

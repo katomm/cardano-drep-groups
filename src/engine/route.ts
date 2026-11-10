@@ -29,7 +29,7 @@ export function routeTx(tx: ChainTx, decoded: DecodedPayload, joinEventAt: JoinL
       return;
     }
     const e = d.event;
-    if (e.tag === 'create' || e.tag === 'update' || e.tag === 'dissolve') {
+    if (e.tag === 'create' || e.tag === 'update' || e.tag === 'dissolve' || e.tag === 'resign') {
       events.push({ ...base, plane: 'control', subject: null, group: null });
       return;
     }

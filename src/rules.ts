@@ -13,6 +13,9 @@ export interface StoredInstance {
 export interface GroupVersion {
   id: EventRef; at: Pos; mode: GroupMode; control: Hex; admission: Hex | null; profile: Anchor | null;
   seq: bigint; status: 'active' | 'dissolved'; createdAt: Pos; profileSetAt: Pos | null;
+  // Keys that resigned from a role, lowercase hex, deduplicated and ascending. A new
+  // version always gets new arrays, so versions never share a mutated one.
+  resignedControl: Hex[]; resignedAdmission: Hex[];
 }
 export interface RuleWorld {
   // First publication at or before at.
@@ -57,6 +60,8 @@ const REASONS = [
   'admission policy not satisfied',
   'control policy needs no signature',
   'admission policy needs no signature',
+  'key not listed in any role',
+  'resigning key did not sign explicitly',
 ] as const;
 type Reason = (typeof REASONS)[number] | 'unknown event';
 export const ALL_REASONS: readonly string[] = REASONS;
@@ -72,9 +77,12 @@ export function resolve(r: RefLike, self: EventRef): EventRef | null {
   return r;
 }
 
-function policy(w: RuleWorld, hash: Hex | null, ctx: EvalContext, at: Pos): boolean {
+// A role's policy, where the sig of a key that resigned from the role is false.
+function policy(w: RuleWorld, hash: Hex | null, ctx: EvalContext, at: Pos, resigned: readonly Hex[]): boolean {
   const s = hash ? w.scriptAt(hash, at) : null;
-  return s !== null && evaluateNativeScript(s, ctx);
+  if (s === null) return false;
+  const signers = resigned.length === 0 ? ctx.signers : new Set([...ctx.signers].filter((k) => !resigned.includes(k)));
+  return evaluateNativeScript(s, { ...ctx, signers });
 }
 
 // A resolved policy that could be satisfied by nobody signing. Unresolved or absent ones are not.
@@ -92,13 +100,15 @@ function keysOf(w: RuleWorld, at: Pos, ...hashes: Array<Hex | null | undefined>)
   return out;
 }
 
-// Keys listed by the new policy of a role that its current policy does not list. A role
-// without a new policy has none.
-function newToRole(w: RuleWorld, at: Pos, next: Hex | undefined, current: Hex | null): Hex[] {
+// Keys listed by the new policy of a role that its current policy does not list. A key
+// that resigned from the role counts as not listed. A role without a new policy has none.
+function newToRole(w: RuleWorld, at: Pos, next: Hex | undefined, current: Hex | null, resigned: readonly Hex[]): Hex[] {
   if (next === undefined) return [];
-  const listed = new Set(keysOf(w, at, current));
+  const listed = new Set(keysOf(w, at, current).filter((k) => !resigned.includes(k)));
   return keysOf(w, at, next).filter((k) => !listed.has(k));
 }
+
+const withKey = (keys: readonly Hex[], k: Hex): Hex[] => (keys.includes(k) ? [...keys] : [...keys, k].sort());
 
 function memberAuthorized(w: RuleWorld, c: Credential, ctx: EvalContext, required: ReadonlySet<Hex>, at: Pos): Reason | null {
   if (c.kind === 'key') return required.has(c.hash) ? null : 'member key not in required_signers';
@@ -115,7 +125,7 @@ export function controlRule(
     if (e.admission !== null && !w.scriptAt(e.admission, at)) return fail('admission policy unresolved');
     if (needsNoSignature(w, e.control, at)) return fail('control policy needs no signature');
     if (needsNoSignature(w, e.admission, at)) return fail('admission policy needs no signature');
-    if (!policy(w, e.control, ctx, at)) return fail('control policy not satisfied');
+    if (!policy(w, e.control, ctx, at, [])) return fail('control policy not satisfied');
     // Consent rule: every listed key signed the create explicitly, a vkey witness alone is no consent.
     if (keysOf(w, at, e.control, e.admission).some((k) => !required.has(k))) return fail('listed key did not sign explicitly');
     return ok(self, null, {
@@ -123,17 +133,34 @@ export function controlRule(
       version: {
         id: self, at, mode: e.mode, control: e.control, admission: e.admission, profile: e.profile,
         seq: 0n, status: 'active', createdAt: at, profileSetAt: e.profile ? at : null,
+        resignedControl: [], resignedAdmission: [],
       },
     });
   }
-  if (e.tag !== 'update' && e.tag !== 'dissolve') return fail('unknown event');
+  if (e.tag !== 'update' && e.tag !== 'dissolve' && e.tag !== 'resign') return fail('unknown event');
   const gref = resolve(e.group, self);
   if (!gref) return fail('local reference must point to an earlier event');
   const g = w.groupAt(gref, at);
   if (!g) return fail('unknown group');
   if (g.status === 'dissolved') return fail('group dissolved', g.id);
+  if (e.tag === 'resign') {
+    // A resign checks no seq. The key leaves every role whose current policy lists it.
+    const inControl = keysOf(w, at, g.control).includes(e.key);
+    const inAdmission = keysOf(w, at, g.admission).includes(e.key);
+    const active = (inControl && !g.resignedControl.includes(e.key)) || (inAdmission && !g.resignedAdmission.includes(e.key));
+    if (!active) return fail('key not listed in any role', g.id);
+    if (!required.has(e.key)) return fail('resigning key did not sign explicitly', g.id);
+    return ok(g.id, null, {
+      kind: 'version',
+      version: {
+        ...g, at, seq: g.seq + 1n,
+        resignedControl: inControl ? withKey(g.resignedControl, e.key) : [...g.resignedControl],
+        resignedAdmission: inAdmission ? withKey(g.resignedAdmission, e.key) : [...g.resignedAdmission],
+      },
+    });
+  }
   if (e.seq !== g.seq) return fail('stale seq', g.id);
-  if (!policy(w, g.control, ctx, at)) return fail('control policy not satisfied', g.id);
+  if (!policy(w, g.control, ctx, at, g.resignedControl)) return fail('control policy not satisfied', g.id);
   // A dissolve writes the dissolved version only, the world decides how instances close.
   if (e.tag === 'dissolve') return ok(g.id, null, { kind: 'version', version: { ...g, at, status: 'dissolved' } });
   const c = e.changes;
@@ -146,11 +173,25 @@ export function controlRule(
   if (needsNoSignature(w, c.admission, at)) return fail('admission policy needs no signature', g.id);
   // Consent rule per role: a key the new policy lists and the current policy of the same
   // role does not list signs explicitly, so a key moving from admission into control signs again.
-  if (newToRole(w, at, c.control, g.control).some((k) => !required.has(k))) return fail('key new to its role did not sign explicitly', g.id);
-  if (newToRole(w, at, c.admission, g.admission).some((k) => !required.has(k))) return fail('key new to its role did not sign explicitly', g.id);
-  const next: GroupVersion = { ...g, at, seq: g.seq + 1n };
-  if (c.control !== undefined) next.control = c.control;
-  if (c.admission !== undefined) next.admission = c.admission;
+  if (newToRole(w, at, c.control, g.control, g.resignedControl).some((k) => !required.has(k))) {
+    return fail('key new to its role did not sign explicitly', g.id);
+  }
+  if (newToRole(w, at, c.admission, g.admission, g.resignedAdmission).some((k) => !required.has(k))) {
+    return fail('key new to its role did not sign explicitly', g.id);
+  }
+  // A role that gets a new policy starts without resignations. Every resigned key the new
+  // policy lists counted as new to the role above and signed explicitly.
+  const next: GroupVersion = {
+    ...g, at, seq: g.seq + 1n, resignedControl: [...g.resignedControl], resignedAdmission: [...g.resignedAdmission],
+  };
+  if (c.control !== undefined) {
+    next.control = c.control;
+    next.resignedControl = [];
+  }
+  if (c.admission !== undefined) {
+    next.admission = c.admission;
+    next.resignedAdmission = [];
+  }
   if (c.profile !== undefined) {
     next.profile = c.profile;
     next.profileSetAt = at;
@@ -200,11 +241,11 @@ export function membershipRule(
   if (e.tag === 'approve') {
     if (close || inst.approvedAt !== null) return fail('join is not pending', group, subject);
     if (g.status === 'dissolved') return fail('group dissolved', group, subject);
-    if (!policy(w, g.admission, ctx, at)) return fail('admission policy not satisfied', group, subject);
+    if (!policy(w, g.admission, ctx, at, g.resignedAdmission)) return fail('admission policy not satisfied', group, subject);
     return ok(group, subject, { kind: 'instance', instance: { ...inst, approvedAt: at } });
   }
   if (close) return fail('join is not open', group, subject);
-  if (!policy(w, g.admission, ctx, at)) return fail('admission policy not satisfied', group, subject);
+  if (!policy(w, g.admission, ctx, at, g.resignedAdmission)) return fail('admission policy not satisfied', group, subject);
   return ok(group, subject, { kind: 'instance', instance: { ...inst, closedAt: at, closeReason: 'removed' } });
 }
 
@@ -212,6 +253,8 @@ export function membershipRule(
 export function eventRule(
   w: RuleWorld, e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Pos,
 ): RuleResult {
-  if (e.tag === 'create' || e.tag === 'update' || e.tag === 'dissolve') return controlRule(w, e, self, ctx, required, at);
+  if (e.tag === 'create' || e.tag === 'update' || e.tag === 'dissolve' || e.tag === 'resign') {
+    return controlRule(w, e, self, ctx, required, at);
+  }
   return membershipRule(w, e, self, ctx, required, at);
 }

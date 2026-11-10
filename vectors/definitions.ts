@@ -6,7 +6,10 @@ import {
   nOfK, ref, regIn, scriptBytes, scriptCred, sig, T, txIn, unregIn,
 } from '../test/helpers.js';
 
-export interface GroupExpect { id: string; status: string; seq: string; mode: string; control: string; admission: string | null; profileUrl: string | null; profileHash: string | null }
+export interface GroupExpect {
+  id: string; status: string; seq: string; mode: string; control: string; admission: string | null;
+  profileUrl: string | null; profileHash: string | null; resignedControl: string[]; resignedAdmission: string[];
+}
 export interface InstanceExpect { joinId: string; group: string; member: string; state: string; reason: string | null }
 export interface VerdictExpect { ref: string; valid: boolean; reason: string | null }
 export interface VectorDef {
@@ -24,7 +27,8 @@ const M = K(0x50);
 const reg = regIn(keyCred(M), T(0x40), 5);
 
 const G = (tx: string, o: Partial<GroupExpect> = {}): GroupExpect => ({
-  id: `${tx}#0`, status: 'active', seq: '0', mode: 'open', control: C, admission: null, profileUrl: null, profileHash: null, ...o,
+  id: `${tx}#0`, status: 'active', seq: '0', mode: 'open', control: C, admission: null, profileUrl: null, profileHash: null,
+  resignedControl: [], resignedAdmission: [], ...o,
 });
 const I = (tx: string, state: string, reason: string | null = null, o: { index?: number; group?: string; member?: string } = {}): InstanceExpect => ({
   joinId: `${tx}#${o.index ?? 0}`, group: o.group ?? `${T(1)}#0`, member: o.member ?? `key:${M}`, state, reason,

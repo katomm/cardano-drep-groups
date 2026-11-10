@@ -14,7 +14,8 @@ export type GroupEvent =
   | { tag: 'update'; group: RefLike; seq: bigint; changes: UpdateChanges }
   | { tag: 'dissolve'; group: RefLike; seq: bigint }
   | { tag: 'join'; group: RefLike; member: Credential }
-  | { tag: 'approve' | 'leave' | 'remove'; join: RefLike };
+  | { tag: 'approve' | 'leave' | 'remove'; join: RefLike }
+  | { tag: 'resign'; group: RefLike; key: Hex };
 export type DecodedEvent = { ok: true; event: GroupEvent } | { ok: false; reason: string };
 export type NativeScript =
   | { type: 'sig'; keyHash: Hex }
@@ -53,6 +54,8 @@ export type ChainInput = { kind: 'tx'; tx: ChainTx } | { kind: 'ledger'; input: 
 export interface GroupState {
   id: EventRef; mode: GroupMode; control: Hex; admission: Hex | null; profile: Anchor | null;
   seq: bigint; status: 'active' | 'dissolved'; createdAt: Position; profileSetAt: Position | null;
+  // Keys that resigned from the control or the admission role, lowercase hex, ascending.
+  resignedControl: Hex[]; resignedAdmission: Hex[];
 }
 export type InstanceReason = 'left' | 'removed' | 'retired' | 'dissolved';
 export interface Instance {

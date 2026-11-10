@@ -41,6 +41,7 @@ export const ev = {
   approve: (join: unknown[]): unknown[] => [4, join],
   leave: (join: unknown[]): unknown[] => [5, join],
   remove: (join: unknown[]): unknown[] => [6, join],
+  resign: (group: unknown[], key: string): unknown[] => [7, group, hexToBytes(key)],
 };
 
 // Builds payload bytes. Scripts go into key 2, each chunked to 64 bytes.

@@ -185,6 +185,8 @@ function eventValue(e: GroupEvent, index: number): Cbor {
     case 'leave':
     case 'remove':
       return [JOIN_TAGS[e.tag], refValue(e.join, index)];
+    case 'resign':
+      return [7, refValue(e.group, index), hexBytes(e.key, HASH28, 'key hash')];
   }
 }
 

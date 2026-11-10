@@ -493,6 +493,31 @@ describe('named engine cases', () => {
     expect(groups.get(T(0x11))).toMatchObject({ status: 'dissolved' });
   });
 
+  it('resigns in the group plane and a resigned admission key in the membership plane', async () => {
+    // A creates a group and resigns from both roles in one tx, so the dissolve after it fails.
+    const frozen = txIn({
+      hash: T(0x10), h: 10, rs: [A],
+      payload: buildPayload([ev.create(1, ctl, ctl), ev.resign(local(0), A), ev.dissolve(local(0), 1)], [CTL]),
+    });
+    // A dissolve before the resign wins, the resign then finds the group dissolved.
+    const gone = txIn({
+      hash: T(0x11), h: 11, rs: [A2],
+      payload: buildPayload([ev.create(0, hashOf(CTL2), null), ev.dissolve(local(0), 0), ev.resign(local(0), A2)], [CTL2]),
+    });
+    const steps = [
+      deliver(reg(m, 0, 5), frozen, gone, join(0x20, 20, G(0x10)), byA(0x30, 30, ev.approve(J(0x20)))),
+      frontiers(30), run({ controlTxs: 1, credentialInputs: 1 }),
+    ];
+    const r = await go(steps);
+    expect([0, 1, 2].map((i) => reasonOf(r.final, 0x10, i))).toEqual([null, null, 'control policy not satisfied']);
+    expect([0, 1, 2].map((i) => reasonOf(r.final, 0x11, i))).toEqual([null, null, 'group dissolved']);
+    expect(reasonOf(r.final, 0x20)).toBeNull();
+    expect(reasonOf(r.final, 0x30)).toBe('admission policy not satisfied');
+    const groups = new Map(r.final.groups.map((g) => [g.id.txHash, g]));
+    expect(groups.get(T(0x10))).toMatchObject({ seq: 1n, status: 'active', resignedControl: [A], resignedAdmission: [A] });
+    expect(groups.get(T(0x11))).toMatchObject({ status: 'dissolved', resignedControl: [] });
+  });
+
   it('a join naming an unknown group', async () => {
     let store: CountingStore | null = null;
     const steps = [

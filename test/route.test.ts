@@ -102,10 +102,11 @@ describe('routeTx', () => {
       ok({ tag: 'create', mode: 'open', control: K(1), admission: null, profile: null }),
       ok({ tag: 'update', group: { local: 0 }, seq: 0n, changes: {} }),
       ok({ tag: 'dissolve', group: { local: 0 }, seq: 1n }),
+      ok({ tag: 'resign', group: { local: 0 }, key: K(1) }),
       { ok: false, reason: 'bad event' },
     ), none);
     expect(r.events.map((e) => [e.plane, e.subject])).toEqual([
-      ['control', null], ['control', null], ['control', null], ['orphan', null],
+      ['control', null], ['control', null], ['control', null], ['control', null], ['orphan', null],
     ]);
   });
 

@@ -42,7 +42,7 @@ const G1: EventRef = { txHash: T(2), index: 0 };
 const createdAt = posOfEvent({ txHash: T(2), blockHeight: 2, txIndex: 0 }, 0);
 const v0 = (o: Partial<GroupVersion> = {}): GroupVersion => ({
   id: G1, at: createdAt, mode: 'permissioned', control: hashOf(C0), admission: hashOf(A0), profile: null,
-  seq: 0n, status: 'active', createdAt, profileSetAt: null, ...o,
+  seq: 0n, status: 'active', createdAt, profileSetAt: null, resignedControl: [], resignedAdmission: [], ...o,
 });
 
 describe('applyControl', () => {
