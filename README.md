@@ -6,7 +6,7 @@ A group publishes its rules in transaction metadata under label `8416`. DReps jo
 
 This package holds the rules in code: it decodes the metadata, checks every signature against the group's policies and replays the chain into groups and memberships. Pure TypeScript, no network access, no platform dependency.
 
-> **Status: draft.** The CIP is not submitted yet, metadata label `8416` will be registered in CIP-10 together with it, and the API can still change.
+> **Status: draft.** The CIP is open as [cardano-foundation/CIPs pull request 1318](https://github.com/cardano-foundation/CIPs/pull/1318), metadata label `8416` will be registered in CIP-10 together with it, and the API can still change.
 
 ## What a group can do
 
@@ -192,9 +192,9 @@ All types are exported, among them `ChainTx`, `LedgerInput`, `ChainInput`, `Grou
 
 ## Test vectors
 
-`vectors/vectors.json` (also importable as `drep-groups/vectors/vectors.json`) holds 48 scenarios with inputs and expected results: open and permissioned lifecycles, the consent rule, signature-free policies, resign, policy rotation, retirement and re-registration, certificate ordering, script DReps including reference scripts, time locks, malformed payloads, duplicate keys and deeply nested data.
+`vectors/vectors.json` (also importable as `drep-groups/vectors/vectors.json`) holds 50 scenarios with inputs and expected results: open and permissioned lifecycles, the consent rule, signature-free policies, resign, policy rotation, retirement and re-registration, certificate ordering, script DReps including reference scripts, time locks, malformed payloads, duplicate keys and deeply nested data.
 
-Payloads are CBOR hex, so the file works for any language. An implementation passes when it produces the same `groups` and `instances` and the same `valid` flag for every verdict. Reason texts are informative.
+Payloads are CBOR hex, so the file works for any language. An implementation passes when it produces the same `groups` and `instances` and the same `valid` flag for every verdict. Reason texts are informative. Compared groups include `resignedControl` and `resignedAdmission`. A ledger input can carry `referenceScriptsHex`: the raw `script_ref` values of the outputs that the registration transaction spends or uses as reference inputs, in output index order, absent when empty. Only native scripts resolve a member script.
 
 ## Development
 
