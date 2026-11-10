@@ -2,6 +2,10 @@
 
 All notable changes to this package. Versions follow [semantic versioning](https://semver.org). While the CIP is a draft, minor versions may contain breaking changes.
 
+## 0.4.0 (2026-11-10)
+
+- **Group id prefix** (breaking): the bech32 display form of a group id uses the prefix `drep_group` instead of `group`, following the CIP-0005 naming of `drep_script` and `cc_hot`. `groupIdFromBech32` rejects the old prefix. The bytes and the on-chain data are unchanged.
+
 ## 0.3.1 (2026-11-09)
 
 - **Anchor URL chunks** are concatenated unchanged: a leading U+FEFF at the start of a chunk is kept instead of being dropped by the text decoder, as the CIP text requires.
