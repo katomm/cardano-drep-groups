@@ -2,7 +2,7 @@
 // RuleWorld and returns its writes, so the same rules run over the eager world of
 // replay and over a lazy world that projects dissolves and unregs at read time.
 import type { CloseReason } from './effective.js';
-import { collectKeyHashes, evaluateNativeScript } from './nativeScript.js';
+import { collectKeyHashes, evaluateNativeScript, satisfiableWithoutSignature } from './nativeScript.js';
 import type { Pos } from './position.js';
 import type { Anchor, Credential, EvalContext, EventRef, GroupEvent, GroupMode, Hex, NativeScript, RefLike } from './types.js';
 
@@ -55,6 +55,8 @@ const REASONS = [
   'open group has no approval',
   'join is not pending',
   'admission policy not satisfied',
+  'control policy needs no signature',
+  'admission policy needs no signature',
 ] as const;
 type Reason = (typeof REASONS)[number] | 'unknown event';
 export const ALL_REASONS: readonly string[] = REASONS;
@@ -73,6 +75,12 @@ export function resolve(r: RefLike, self: EventRef): EventRef | null {
 function policy(w: RuleWorld, hash: Hex | null, ctx: EvalContext, at: Pos): boolean {
   const s = hash ? w.scriptAt(hash, at) : null;
   return s !== null && evaluateNativeScript(s, ctx);
+}
+
+// A resolved policy that could be satisfied by nobody signing. Unresolved or absent ones are not.
+function needsNoSignature(w: RuleWorld, hash: Hex | null | undefined, at: Pos): boolean {
+  const s = hash ? w.scriptAt(hash, at) : null;
+  return s !== null && satisfiableWithoutSignature(s);
 }
 
 function keysOf(w: RuleWorld, at: Pos, ...hashes: Array<Hex | null | undefined>): Hex[] {
@@ -105,6 +113,8 @@ export function controlRule(
   if (e.tag === 'create') {
     if (!w.scriptAt(e.control, at)) return fail('control policy unresolved');
     if (e.admission !== null && !w.scriptAt(e.admission, at)) return fail('admission policy unresolved');
+    if (needsNoSignature(w, e.control, at)) return fail('control policy needs no signature');
+    if (needsNoSignature(w, e.admission, at)) return fail('admission policy needs no signature');
     if (!policy(w, e.control, ctx, at)) return fail('control policy not satisfied');
     // Consent rule: every listed key signed the create explicitly, a vkey witness alone is no consent.
     if (keysOf(w, at, e.control, e.admission).some((k) => !required.has(k))) return fail('listed key did not sign explicitly');
@@ -132,6 +142,8 @@ export function controlRule(
     if (g.mode === 'open') return fail('open group has no admission policy', g.id);
     if (!w.scriptAt(c.admission, at)) return fail('new admission policy unresolved', g.id);
   }
+  if (needsNoSignature(w, c.control, at)) return fail('control policy needs no signature', g.id);
+  if (needsNoSignature(w, c.admission, at)) return fail('admission policy needs no signature', g.id);
   // Consent rule per role: a key the new policy lists and the current policy of the same
   // role does not list signs explicitly, so a key moving from admission into control signs again.
   if (newToRole(w, at, c.control, g.control).some((k) => !required.has(k))) return fail('key new to its role did not sign explicitly', g.id);

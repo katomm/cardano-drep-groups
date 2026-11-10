@@ -180,6 +180,25 @@ describe('consent by explicit signature, per role', () => {
   });
 });
 
+describe('policies that need no signature', () => {
+  const reasons = (inputs: Parameters<typeof replay>[0]) => replay(inputs).verdicts.map((v) => v.reason);
+  const k1 = sig(K(1));
+  it('a create with a signature-free control policy is invalid', () => {
+    const free = allOf();
+    const tx = txIn({ hash: T(1), h: 10, rs: [], payload: buildPayload([ev.create(0, hashOf(free), null)], [free]) });
+    expect(reasons([tx])).toEqual(['control policy needs no signature']);
+  });
+  it('an update to a signature-free admission policy is invalid', () => {
+    const free = [2, [[4, 0]]];
+    const create = txIn({ hash: T(1), h: 10, rs: [K(1)], payload: buildPayload([ev.create(1, hashOf(k1), hashOf(k1))], [k1]) });
+    const update = txIn({
+      hash: T(2), h: 11, rs: [K(1)],
+      payload: buildPayload([ev.update(ref(T(1), 0), 0, new Map([[1, kb(hashOf(free))]]))], [free]),
+    });
+    expect(reasons([create, update])).toEqual([null, 'admission policy needs no signature']);
+  });
+});
+
 describe('ALL_REASONS', () => {
   it('lists each reason once and leaves out the defensive unknown event', () => {
     expect(new Set(ALL_REASONS).size).toBe(ALL_REASONS.length);

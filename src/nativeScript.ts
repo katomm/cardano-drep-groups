@@ -265,6 +265,33 @@ export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean
   return result;
 }
 
+// Can the script evaluate true with an empty signer set at some slot? A sig never does,
+// after and before can for a suitable slot. Iterative post-order walk like the other walks.
+export function satisfiableWithoutSignature(s: NativeScript): boolean {
+  const stack: { script: NativeScript; next: number; results: boolean[] }[] = [{ script: s, next: 0, results: [] }];
+  let result = false;
+  while (stack.length > 0) {
+    const top = stack[stack.length - 1]!;
+    const sc = top.script;
+    if (sc.type === 'sig') result = false;
+    else if (sc.type === 'after' || sc.type === 'before') result = true;
+    else {
+      if (top.next < sc.scripts.length) {
+        stack.push({ script: sc.scripts[top.next]!, next: 0, results: [] });
+        top.next += 1;
+        continue;
+      }
+      if (sc.type === 'all') result = top.results.every((r) => r);
+      else if (sc.type === 'any') result = top.results.some((r) => r);
+      else result = BigInt(top.results.filter((r) => r).length) >= sc.n;
+    }
+    stack.pop();
+    const parent = stack[stack.length - 1];
+    if (parent) parent.results.push(result);
+  }
+  return result;
+}
+
 export function collectKeyHashes(s: NativeScript): Hex[] {
   const out: Hex[] = [];
   const stack: NativeScript[] = [s];

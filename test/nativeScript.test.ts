@@ -1,7 +1,7 @@
 import { encode } from 'cborg';
 import { describe, expect, it } from 'vitest';
 import { hexToBytes } from '../src/hex.js';
-import { collectKeyHashes, evaluateNativeScript, memberScriptWitness, parseNativeScript } from '../src/nativeScript.js';
+import { collectKeyHashes, evaluateNativeScript, memberScriptWitness, parseNativeScript, satisfiableWithoutSignature } from '../src/nativeScript.js';
 import type { EvalContext, NativeScript } from '../src/types.js';
 import { after, allOf, anyOf, before, hashOf, K, keyCred, nOfK, scriptBytes, scriptCred, sig } from './helpers.js';
 
@@ -173,5 +173,24 @@ describe('memberScriptWitness', () => {
     expect(memberScriptWitness(keyCred(hashOf(member)), [scriptBytes(member)])).toBeNull();
     const bad = scriptBytes([9, 1] as never);
     expect(memberScriptWitness(scriptCred(hashOf([9, 1] as never)), [bad])).toBeNull();
+  });
+});
+
+describe('satisfiableWithoutSignature', () => {
+  const free = (v: unknown[]) => satisfiableWithoutSignature(parse(v));
+  it('is true when no signature is needed', () => {
+    expect(free(allOf())).toBe(true);
+    expect(free(nOfK(0))).toBe(true);
+    expect(free([3, -1, [sig(K(1))]])).toBe(true);
+    expect(free(anyOf(after(0)))).toBe(true);
+    expect(free(allOf(after(5), before(9)))).toBe(true);
+    expect(free(nOfK(1, sig(K(1)), before(3)))).toBe(true);
+  });
+  it('is false when a signature is always needed', () => {
+    expect(free(sig(K(1)))).toBe(false);
+    expect(free(anyOf())).toBe(false);
+    expect(free(nOfK(3, sig(K(1)), sig(K(2))))).toBe(false);
+    expect(free(allOf(sig(K(1)), after(5)))).toBe(false);
+    expect(free(nOfK(2, sig(K(1)), after(1)))).toBe(false);
   });
 });

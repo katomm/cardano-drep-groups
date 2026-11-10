@@ -220,13 +220,15 @@ export const VECTORS: VectorDef[] = [
       createWith(T(5), 14, negN, []),
     ],
     expect: {
-      groups: [
-        G(T(1), { control: hashOf(allOf()) }),
-        G(T(3), { control: hashOf(nOfK(0)) }),
-        G(T(5), { control: hashOf(negN) }),
-      ],
+      groups: [],
       instances: [],
-      verdicts: [V(T(1), true), V(T(2), false, 'control policy not satisfied'), V(T(3), true), V(T(4), false, 'control policy not satisfied'), V(T(5), true)],
+      verdicts: [
+        V(T(1), false, 'control policy needs no signature'),
+        V(T(2), false, 'control policy not satisfied'),
+        V(T(3), false, 'control policy needs no signature'),
+        V(T(4), false, 'control policy not satisfied'),
+        V(T(5), false, 'control policy needs no signature'),
+      ],
     },
   },
   {

@@ -32,6 +32,9 @@ const script = (value: Cbor, listed: Hex[], satisfy: Hex[]): Script => {
   return { bytes, hash: nativeScriptHash(bytes), listed, satisfy };
 };
 
+// Policies that can be satisfied with no signer at all, which a rule rejects.
+const KEYLESS: Script[] = [script(allS(), [], []), script(nOfKS(0), [], []), script(anyS(afterS(0)), [], [])];
+
 // Validity interval that satisfies every time lock the generator writes.
 const SLOT_AFTER = 100;
 const SLOT_BEFORE = 5000;
@@ -223,13 +226,24 @@ class ChainBuilder {
 
   // Events. Each returns false when its preconditions are missing, the caller picks another.
 
-  private create(d: Draft, flaw: 'none' | 'control' | 'admission' | 'unsigned' | 'listed' | 'witness'): boolean {
+  private create(d: Draft, flaw: 'none' | 'control' | 'admission' | 'unsigned' | 'listed' | 'witness' | 'keyless'): boolean {
     if (flaw === 'none' && this.groups.length >= this.maxGroups) return false;
     const mode = this.rng.chance(0.55) ? 'permissioned' : 'open';
     const unpublished = this.policies.filter((p) => !this.isPublished(p));
     let control = this.rng.pick(this.policies);
     let admission: Script | null = mode === 'permissioned' ? this.rng.pick(this.policies) : null;
-    if (flaw === 'control') {
+    if (flaw === 'keyless') {
+      // A policy nobody has to sign for, as control or (permissioned) as admission.
+      const free = this.rng.pick(KEYLESS);
+      this.publish(d, free);
+      if (!this.isPublished(control)) this.publish(d, control);
+      if (mode === 'permissioned' && this.rng.chance(0.5)) {
+        admission = free;
+      } else {
+        control = free;
+        if (admission && !this.isPublished(admission)) this.publish(d, admission);
+      }
+    } else if (flaw === 'control') {
       if (unpublished.length === 0) return false;
       control = this.rng.pick(unpublished);
     } else if (flaw === 'witness') {
@@ -275,7 +289,7 @@ class ChainBuilder {
     return { ref: this.ref(g.ref, d), g };
   }
 
-  private update(d: Draft, flaw: 'none' | 'stale' | 'unknown' | 'dissolved' | 'unsigned' | 'newControl' | 'openAdmission' | 'newAdmission' | 'newKeys' | 'forward' | 'flood'): boolean {
+  private update(d: Draft, flaw: 'none' | 'stale' | 'unknown' | 'dissolved' | 'unsigned' | 'newControl' | 'openAdmission' | 'newAdmission' | 'newKeys' | 'forward' | 'flood' | 'keyless'): boolean {
     let target: { ref: Cbor; g: MGroup | null } | null;
     if (flaw === 'unknown') target = this.groupRef(d, this.rng.chance(0.7) ? 'unknown' : 'later');
     else if (flaw === 'forward') target = this.groupRef(d, 'forward');
@@ -289,7 +303,12 @@ class ChainBuilder {
     const g = target.g;
     const changes = new Map<number, Cbor>();
     let next: { control?: Script; admission?: Script } = {};
-    if (flaw === 'newControl' || flaw === 'newAdmission') {
+    if (flaw === 'keyless') {
+      // Control or (permissioned) admission changes to a policy nobody has to sign for.
+      const free = this.rng.pick(KEYLESS);
+      this.publish(d, free);
+      changes.set(g?.mode === 'permissioned' && this.rng.chance(0.5) ? 1 : 0, hexToBytes(free.hash));
+    } else if (flaw === 'newControl' || flaw === 'newAdmission') {
       const unpublished = this.policies.filter((p) => !this.isPublished(p));
       if (unpublished.length === 0) return false;
       if (flaw === 'newAdmission' && g?.mode !== 'permissioned') return false;
@@ -463,6 +482,7 @@ class ChainBuilder {
       [1, () => this.create(d, 'admission')],
       [0.8, () => this.create(d, 'unsigned')],
       [1, () => this.create(d, 'listed')],
+      [1, () => this.create(d, 'keyless')],
       [7, () => this.update(d, 'none')],
       [0.8, () => this.update(d, 'stale')],
       [0.8, () => this.update(d, 'unknown')],
@@ -473,6 +493,7 @@ class ChainBuilder {
       [0.8, () => this.update(d, 'newAdmission')],
       [0.8, () => this.update(d, 'newKeys')],
       [0.4, () => this.update(d, 'forward')],
+      [1.2, () => this.update(d, 'keyless')],
       [2.5, () => this.dissolve(d, 'none')],
       [0.4, () => this.dissolve(d, 'stale')],
       [0.4, () => this.dissolve(d, 'unsigned')],
