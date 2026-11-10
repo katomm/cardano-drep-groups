@@ -2,7 +2,7 @@ import { bech32 } from 'bech32';
 import { bytesToHex, hexToBytes } from './hex.js';
 import type { EventRef } from './types.js';
 
-const PREFIX = 'group';
+const PREFIX = 'drep_group';
 
 // Spec A6 display form: bech32 of tx_hash || uint16be(event_index).
 export function groupIdToBech32(ref: EventRef): string {
