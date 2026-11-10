@@ -49,6 +49,9 @@ export interface LedgerInput {
   txIndex: number;
   certIndex: number;
   witnessScripts?: Uint8Array[]; // raw witness scripts of the reg_drep tx, for script DReps
+  // Raw script_ref values (tag 24 around [language, script]) of the outputs the reg_drep tx
+  // spends or uses as reference inputs, for script DReps. Only native ones resolve.
+  referenceScripts?: Uint8Array[];
 }
 export type ChainInput = { kind: 'tx'; tx: ChainTx } | { kind: 'ledger'; input: LedgerInput };
 export interface GroupState {

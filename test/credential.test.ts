@@ -12,7 +12,7 @@ import type { StoredInstance } from '../src/rules.js';
 import { credKey, refKey, replay } from '../src/state.js';
 import type { ChainTx, Credential, EventRef, Instance, LedgerInput } from '../src/types.js';
 import { chainTx, type Committed, committed, FixtureView, keyStrings } from './engineFixture.js';
-import { buildPayload, ev, hashOf, K, keyCred, local, ref, scriptBytes, scriptCred, sig, T } from './helpers.js';
+import { buildPayload, ev, hashOf, K, keyCred, local, ref, scriptBytes, scriptCred, scriptRefOf, sig, T } from './helpers.js';
 
 type Observed = { ref: EventRef; tag: string | null; valid: boolean; reason: string | null };
 
@@ -106,8 +106,10 @@ const C0 = sig(K(1));
 const A0 = sig(K(2));
 const M = keyCred(K(7));
 const G: EventRef = { txHash: T(2), index: 0 };
-const cert = (kind: 'reg' | 'unreg', credential: Credential, h: number, certIndex = 0, witnessScripts?: Uint8Array[]): LedgerInput =>
-  ({ kind, credential, txHash: T(h), blockHeight: h, txIndex: 0, certIndex, ...(witnessScripts ? { witnessScripts } : {}) });
+const cert = (
+  kind: 'reg' | 'unreg', credential: Credential, h: number, certIndex = 0, witnessScripts?: Uint8Array[], referenceScripts?: Uint8Array[],
+): LedgerInput =>
+  ({ kind, credential, txHash: T(h), blockHeight: h, txIndex: 0, certIndex, ...(witnessScripts ? { witnessScripts } : {}), ...(referenceScripts ? { referenceScripts } : {}) });
 // A group created at height 2, permissioned (1) or open (0), with its scripts in the payload.
 const createTx = (mode: 0 | 1): ChainTx =>
   chainTx({ hash: T(2), h: 2, rs: [K(1), K(2)], payload: buildPayload([ev.create(mode, hashOf(C0), mode ? hashOf(A0) : null)], [C0, A0]) });
@@ -171,6 +173,22 @@ describe('applyCredential', () => {
     const without = pipeline(txs, bare);
     expect((without[without.length - 1] as ChangeSet).verdicts).toMatchObject([{ tag: 'join', valid: false, reason: 'member script unresolved' }]);
     expectReplay(txs, bare, without);
+  });
+
+  it('a reference script of the reg becomes the member script, a Plutus one does not', () => {
+    const MS = sig(K(9));
+    const S = scriptCred(hashOf(MS));
+    const txs = [createTx(0), evTx(10, [ev.join(ref(T(2), 0), 'script', hashOf(MS))], [K(9)])];
+    const ledger = [cert('reg', S, 5, 0, undefined, [scriptRefOf(2, scriptBytes(MS)), scriptRefOf(0, scriptBytes(MS))])];
+    const sets = pipeline(txs, ledger);
+    const unit = sets[sets.length - 1] as ChangeSet;
+    expect(unit.memberScripts).toEqual([{ credential: S, script: parseNativeScript(scriptBytes(MS)), bytes: scriptBytes(MS), at: posOfCert(ledger[0] as LedgerInput) }]);
+    expect(unit.verdicts).toMatchObject([{ tag: 'join', valid: true, group: G, subject: S }]);
+    expectReplay(txs, ledger, sets);
+    const plutus = [cert('reg', S, 5, 0, undefined, [scriptRefOf(2, scriptBytes(MS))])];
+    const without = pipeline(txs, plutus);
+    expect((without[without.length - 1] as ChangeSet).verdicts).toMatchObject([{ tag: 'join', valid: false, reason: 'member script unresolved' }]);
+    expectReplay(txs, plutus, without);
   });
 
   it('a join naming an unknown group is marked applied without a verdict', () => {

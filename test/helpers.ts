@@ -1,6 +1,6 @@
-import { encode } from 'cborg';
+import { encode, Tagged } from 'cborg';
 import { nativeScriptHash } from '../src/hash.js';
-import { hexToBytes } from '../src/hex.js';
+import { concatBytes, hexToBytes } from '../src/hex.js';
 import type { ChainInput, Credential } from '../src/types.js';
 
 // Deterministic 28-byte key hashes and 32-byte tx hashes for readable tests.
@@ -18,6 +18,10 @@ export const after = (slot: number): ScriptValue => [4, slot];
 export const before = (slot: number): ScriptValue => [5, slot];
 export const scriptBytes = (s: ScriptValue): Uint8Array => encode(s);
 export const hashOf = (s: ScriptValue): string => nativeScriptHash(scriptBytes(s));
+// A script_ref value: tag 24 around the bytes of [language, script]. A native script
+// (language 0) is embedded as its own CBOR item, a Plutus script as a byte string.
+export const scriptRefOf = (language: number, script: Uint8Array): Uint8Array =>
+  encode(new Tagged(24, language === 0 ? concatBytes([new Uint8Array([0x82, 0x00]), script]) : encode([language, script])));
 
 export function chunk64(bytes: Uint8Array, size = 64): Uint8Array[] {
   const out: Uint8Array[] = [];
@@ -71,8 +75,11 @@ export function txIn(o: {
   };
 }
 
-export function regIn(cred: Credential, hash: string, h: number, i = 0, scripts?: Uint8Array[]): ChainInput {
-  return { kind: 'ledger', input: { kind: 'reg', credential: cred, txHash: hash, blockHeight: h, txIndex: i, certIndex: 0, witnessScripts: scripts } };
+export function regIn(cred: Credential, hash: string, h: number, i = 0, scripts?: Uint8Array[], refs?: Uint8Array[]): ChainInput {
+  return {
+    kind: 'ledger',
+    input: { kind: 'reg', credential: cred, txHash: hash, blockHeight: h, txIndex: i, certIndex: 0, witnessScripts: scripts, ...(refs ? { referenceScripts: refs } : {}) },
+  };
 }
 
 export function unregIn(cred: Credential, hash: string, h: number, i = 0): ChainInput {

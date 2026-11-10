@@ -4,7 +4,7 @@
 // its schedule exactly.
 import type { Budget } from '../engine/types.js';
 import { nativeScriptHash } from '../hash.js';
-import { hexToBytes } from '../hex.js';
+import { concatBytes, hexToBytes } from '../hex.js';
 import { evaluateNativeScript, parseNativeScript } from '../nativeScript.js';
 import { credKey } from '../state.js';
 import { type Cbor, encodeCbor } from './cbor.js';
@@ -18,6 +18,13 @@ const anyS = (...s: Cbor[]): Cbor => [2, s];
 const nOfKS = (n: number, ...s: Cbor[]): Cbor => [3, n, s];
 const afterS = (slot: number): Cbor => [4, slot];
 const beforeS = (slot: number): Cbor => [5, slot];
+
+// A script_ref value: tag 24 (d8 18) around the byte string of [language, script]. A native
+// script (language 0) is embedded as its own item, a Plutus script as a byte string.
+const scriptRefOf = (language: number, script: Uint8Array): Uint8Array => {
+  const content = language === 0 ? concatBytes([new Uint8Array([0x82, 0x00]), script]) : encodeCbor([language, script]);
+  return concatBytes([new Uint8Array([0xd8, 0x18]), encodeCbor(content)]);
+};
 
 const chunk64 = (b: Uint8Array): Cbor[] => {
   const out: Cbor[] = [];
@@ -166,9 +173,17 @@ class ChainBuilder {
       const input: LedgerInput = { kind: r.kind, credential: r.m.cred, txHash: pos.txHash, blockHeight: pos.blockHeight, txIndex: pos.txIndex, certIndex };
       if (r.kind === 'reg' && r.m.script) {
         const ws: Uint8Array[] = [];
-        if (r.witness) ws.push(r.m.script.bytes);
+        const refs: Uint8Array[] = [];
+        // The member script as a witness, or in 30 percent as a native reference script.
+        if (r.witness) {
+          if (this.rng.chance(0.3)) refs.push(scriptRefOf(0, r.m.script.bytes));
+          else ws.push(r.m.script.bytes);
+        }
         if (this.rng.chance(0.3)) ws.push(this.rng.pick(this.policies).bytes); // an unrelated witness
+        // The member script as a Plutus reference script, which resolves nothing.
+        if (this.rng.chance(0.1)) refs.push(scriptRefOf(2, r.m.script.bytes));
         if (ws.length > 0) input.witnessScripts = ws;
+        if (refs.length > 0) input.referenceScripts = refs;
       }
       this.out.push({ kind: 'ledger', input });
       this.applyLedger(r.kind, r.m, r.kind === 'reg' && r.witness === true);

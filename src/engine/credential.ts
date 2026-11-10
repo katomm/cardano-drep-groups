@@ -10,8 +10,8 @@ import type { ChangeSet, CredentialInput, View } from './types.js';
 const posOf = (x: CredentialInput): Pos => (x.kind === 'ledger' ? x.at : x.q.at);
 
 // Folds the inputs of `c` in position order. A reg of a script credential writes the
-// witness script whose hash is the credential hash as its member script, an unreg adds a
-// retirement effect. Registration itself is read from the stored ledger rows through the
+// witness or native reference script whose hash is the credential hash as its member
+// script, an unreg adds a retirement effect. Registration itself is read from the stored ledger rows through the
 // view. Every event runs the membership rule with its tx context, its verdict is kept when
 // it has a group, and its ref is marked applied either way. `overlay` holds the change sets
 // of earlier units of the same uncommitted batch. Rule results reach `observe` only when
@@ -32,7 +32,7 @@ export function applyCredential(
         continue;
       }
       if (own.memberScripts.length > 0) continue;
-      const m = memberScriptWitness(c, l.witnessScripts);
+      const m = memberScriptWitness(c, l.witnessScripts, l.referenceScripts);
       if (m) own.memberScripts.push({ credential: c, script: m.script, bytes: m.bytes, at: x.at });
       continue;
     }

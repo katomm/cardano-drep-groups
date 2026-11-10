@@ -3,7 +3,36 @@ import {
   emptyCoverage, generateChain, generateSchedule, mergeCoverage, runSchedule,
 } from '../src/conformance/index.js';
 import { MemoryStore } from '../src/engine/memoryStore.js';
+import { nativeScriptHash } from '../src/hash.js';
+import { bytesToHex } from '../src/hex.js';
+import { nativeScriptFromScriptRef } from '../src/nativeScript.js';
 import { ALL_REASONS } from '../src/rules.js';
+import { scriptRefOf } from './helpers.js';
+
+describe('generated chains', () => {
+  it('carry member scripts as native and Plutus reference scripts in the script_ref form', () => {
+    let native = 0;
+    let plutus = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      for (const x of generateChain(seed)) {
+        if (x.kind !== 'ledger') continue;
+        for (const r of x.input.referenceScripts ?? []) {
+          const inner = nativeScriptFromScriptRef(r);
+          if (inner === null) {
+            plutus += 1;
+            continue;
+          }
+          native += 1;
+          // The test helper form, which equals the script_ref the Evolution SDK writes.
+          expect(bytesToHex(r)).toBe(bytesToHex(scriptRefOf(0, inner)));
+          expect(nativeScriptHash(inner)).toBe(x.input.credential.hash);
+        }
+      }
+    }
+    expect(native).toBeGreaterThan(0);
+    expect(plutus).toBeGreaterThan(0);
+  });
+});
 
 describe('incremental engine against replay', () => {
   it('equals replay over seeded chains and schedules', async () => {

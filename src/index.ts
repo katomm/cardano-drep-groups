@@ -1,11 +1,11 @@
 export * from './types.js';
 export { bytesToHex, hexToBytes } from './hex.js';
 export { keyHashOfVkey, nativeScriptHash } from './hash.js';
-export { collectKeyHashes, evaluateNativeScript, memberScriptWitness, parseNativeScript, satisfiableWithoutSignature } from './nativeScript.js';
+export { collectKeyHashes, evaluateNativeScript, memberScriptWitness, nativeScriptFromScriptRef, parseNativeScript, satisfiableWithoutSignature } from './nativeScript.js';
 export { decodePayload, GROUPS_LABEL } from './payload.js';
 export { type Cbor, chunkBytes, chunkText, EncodeError, encodeCbor, encodeNativeScript, encodePayload, type PayloadInput } from './encode.js';
 export { type MajorityScript, majorityScript } from './majority.js';
-export { decodeTransaction } from './tx.js';
+export { decodeTransaction, decodeTxRefs, type TxIn } from './tx.js';
 export { inspectTransaction, type TxFacts } from './txFacts.js';
 export { credKey, orderInputs, refKey, replay } from './state.js';
 export { type AddressCheck, checkPaymentAddress, type Network } from './address.js';

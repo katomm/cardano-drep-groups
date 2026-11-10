@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs';
+import {
+  Address, Assets, ScriptRef, Transaction, TransactionBody, TransactionHash, TransactionInput, TransactionWitnessSet, TxOut,
+} from '@evolution-sdk/evolution';
 import { decode, encode, Tagged } from 'cborg';
 import { describe, expect, it } from 'vitest';
 import { keyHashOfVkey } from '../src/hash.js';
 import { bytesToHex, concatBytes, hexToBytes } from '../src/hex.js';
-import { decodeTransaction } from '../src/tx.js';
-import { allOf, buildPayload, ev, K, scriptBytes, sig, T } from './helpers.js';
+import { replay } from '../src/state.js';
+import { decodeTransaction, decodeTxRefs, type TxIn } from '../src/tx.js';
+import { allOf, buildPayload, ev, hashOf, K, ref, regIn, scriptBytes, scriptCred, scriptRefOf, sig, T, txIn } from './helpers.js';
 
 const pos = { txHash: T(1), blockHeight: 100, txIndex: 2 };
 const vkey = new Uint8Array(32).fill(0x33);
@@ -102,5 +106,103 @@ describe('decodeTransaction', () => {
     expect(t.requiredSigners.length).toBeGreaterThan(0);
     expect(t.witnessKeyHashes.length).toBeGreaterThan(0);
     expect(t.payload).toBeUndefined(); // label 17, not 8416
+  });
+});
+
+// Transactions built with Evolution: inputs and reference inputs in the set tag 258,
+// outputs as arrays without a script_ref and as maps with one.
+const addr = Address.fromHex(`61${'11'.repeat(28)}`);
+// The SDK takes the content of the tag 24 byte string, [language, script].
+const evoOut = (scriptRef?: Uint8Array) =>
+  new TxOut.TransactionOutput({
+    address: addr, assets: Assets.fromLovelace(2_000_000n), ...(scriptRef ? { scriptRef: new ScriptRef.ScriptRef({ bytes: scriptRef }) } : {}),
+  });
+const evoIn = (i: TxIn) => new TransactionInput.TransactionInput({ transactionId: TransactionHash.fromHex(i.txHash), index: BigInt(i.index) });
+function evoTx(o: { inputs: TxIn[]; refs?: TxIn[]; outputs: TxOut.TransactionOutput[] }): Uint8Array {
+  const body = new TransactionBody.TransactionBody({
+    inputs: o.inputs.map(evoIn), outputs: o.outputs, fee: 0n, ...(o.refs ? { referenceInputs: o.refs.map(evoIn) as [TransactionInput.TransactionInput] } : {}),
+  });
+  return Transaction.toCBORBytes(new Transaction.Transaction({ body, witnessSet: new TransactionWitnessSet.TransactionWitnessSet({}), isValid: true, auxiliaryData: null }));
+}
+const nativeContent = (s: unknown[]) => concatBytes([hexToBytes('8200'), scriptBytes(s)]);
+
+describe('decodeTxRefs', () => {
+  const ms = allOf(sig(K(0x60)), sig(K(0x61)));
+  const plutus = new Uint8Array([0x4d, 1, 2, 3]);
+
+  it('exposes inputs, reference inputs and output script refs of an Evolution transaction', () => {
+    const raw = evoTx({
+      inputs: [{ txHash: T(0xa1), index: 3 }, { txHash: T(0xa2), index: 0 }],
+      refs: [{ txHash: T(0xa3), index: 7 }],
+      outputs: [evoOut(nativeContent(ms)), evoOut(), evoOut(encode([2, plutus]))],
+    });
+    const r = decodeTxRefs(raw);
+    expect(new Set(r.inputs.map((i) => `${i.txHash}#${i.index}`))).toEqual(new Set([`${T(0xa1)}#3`, `${T(0xa2)}#0`]));
+    expect(r.referenceInputs).toEqual([{ txHash: T(0xa3), index: 7 }]);
+    expect(r.outputScriptRefs.map((x) => (x ? bytesToHex(x) : null))).toEqual([
+      bytesToHex(scriptRefOf(0, scriptBytes(ms))), null, bytesToHex(scriptRefOf(2, plutus)),
+    ]);
+  });
+
+  it('reads plain input arrays, legacy array outputs and a pre-Alonzo envelope', () => {
+    const legacyOut = [hexToBytes(`61${'11'.repeat(28)}`), 1_000_000];
+    const mapOut = new Map<number, unknown>([[0, hexToBytes(`61${'11'.repeat(28)}`)], [1, 2_000_000], [3, new Tagged(24, nativeContent(ms))]]);
+    const body = new Map<number, unknown>([[0, [[hexToBytes(T(0xb1)), 1]]], [1, [legacyOut, mapOut]], [2, 0], [18, [[hexToBytes(T(0xb2)), 2]]]]);
+    for (const raw of [encode([body, new Map(), true, null]), encode([body, new Map(), null])]) {
+      const r = decodeTxRefs(raw);
+      expect(r.inputs).toEqual([{ txHash: T(0xb1), index: 1 }]);
+      expect(r.referenceInputs).toEqual([{ txHash: T(0xb2), index: 2 }]);
+      expect(r.outputScriptRefs.map((x) => (x ? bytesToHex(x) : null))).toEqual([null, bytesToHex(scriptRefOf(0, scriptBytes(ms)))]);
+    }
+    expect(decodeTxRefs(encode([new Map([[2, 0]]), new Map(), true, null]))).toEqual({ inputs: [], referenceInputs: [], outputScriptRefs: [] });
+  });
+
+  it('throws on bytes that are not a transaction', () => {
+    expect(() => decodeTxRefs(encode([1, 2]))).toThrow();
+    expect(() => decodeTxRefs(concatBytes([encode([new Map(), new Map(), true, null]), hexToBytes('00')]))).toThrow();
+  });
+});
+
+// The indexer side of the division of labour: the reference scripts of a registration are
+// the script_refs of the outputs its inputs and reference inputs point to, each looked up
+// in its producing transaction by output index.
+function referenceScriptsOf(registration: Uint8Array, producers: Map<string, Uint8Array>): Uint8Array[] {
+  const r = decodeTxRefs(registration);
+  return [...r.inputs, ...r.referenceInputs].flatMap((i) => {
+    const producer = producers.get(i.txHash);
+    const s = producer ? decodeTxRefs(producer).outputScriptRefs[i.index] : null;
+    return s ? [s] : [];
+  });
+}
+
+describe('replay with reference scripts found through decodeTxRefs', () => {
+  const ms = allOf(sig(K(0x60)), sig(K(0x61)));
+  const SC = hashOf(ms);
+  const P = T(0x50);
+  // The producing transaction carries the member script on output 0 only.
+  const producers = new Map([[P, evoTx({ inputs: [{ txHash: T(0x51), index: 0 }], outputs: [evoOut(nativeContent(ms)), evoOut()] })]]);
+  const create = txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(0, hashOf(sig(K(0x70))), null)], [sig(K(0x70))]), rs: [K(0x70)] });
+  const join = txIn({ hash: T(2), h: 11, payload: buildPayload([ev.join(ref(T(1), 0), 'script', SC)]), wk: [K(0x60), K(0x61)] });
+  const run = (registration: Uint8Array) => {
+    const refs = referenceScriptsOf(registration, producers);
+    return { refs, verdict: replay([regIn(scriptCred(SC), T(0x40), 5, 0, undefined, refs), create, join]).verdicts[1] };
+  };
+
+  it('accepts the join when the registration spends the output with the script', () => {
+    const { refs, verdict } = run(evoTx({ inputs: [{ txHash: P, index: 0 }], outputs: [evoOut()] }));
+    expect(refs).toHaveLength(1);
+    expect(verdict).toMatchObject({ valid: true, reason: null });
+  });
+
+  it('accepts the join when the registration uses the output as a reference input', () => {
+    const { refs, verdict } = run(evoTx({ inputs: [{ txHash: T(0x52), index: 0 }], refs: [{ txHash: P, index: 0 }], outputs: [evoOut()] }));
+    expect(refs).toHaveLength(1);
+    expect(verdict).toMatchObject({ valid: true, reason: null });
+  });
+
+  it('rejects the join when the script sits on another output of the producing transaction', () => {
+    const { refs, verdict } = run(evoTx({ inputs: [{ txHash: P, index: 1 }], outputs: [evoOut()] }));
+    expect(refs).toEqual([]);
+    expect(verdict).toMatchObject({ valid: false, reason: 'member script unresolved' });
   });
 });

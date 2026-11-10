@@ -26,6 +26,8 @@ function serialize(defs: VectorDef[]): unknown {
               kind: 'ledger', type: x.input.kind, credential: x.input.credential, txHash: x.input.txHash,
               blockHeight: x.input.blockHeight, txIndex: x.input.txIndex, certIndex: x.input.certIndex,
               witnessScriptsHex: (x.input.witnessScripts ?? []).map(bytesToHex),
+              // Omitted when empty, so vectors without reference scripts keep their bytes.
+              ...(x.input.referenceScripts?.length ? { referenceScriptsHex: x.input.referenceScripts.map(bytesToHex) } : {}),
             },
       ),
       expect: d.expect,
@@ -55,6 +57,7 @@ function fromJson(inputs: any[]): ChainInput[] {
           input: {
             kind: x.type, credential: x.credential, txHash: x.txHash, blockHeight: x.blockHeight, txIndex: x.txIndex,
             certIndex: x.certIndex, witnessScripts: x.witnessScriptsHex.map(hexToBytes),
+            referenceScripts: (x.referenceScriptsHex ?? []).map(hexToBytes),
           },
         },
   );

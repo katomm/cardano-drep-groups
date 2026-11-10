@@ -98,7 +98,7 @@ class EagerWorld implements RuleWorld {
     const at = posOfCert(l);
     if (l.kind === 'reg') {
       this.registered.add(ck);
-      const m = memberScriptWitness(l.credential, l.witnessScripts);
+      const m = memberScriptWitness(l.credential, l.witnessScripts, l.referenceScripts);
       if (m) this.memberScripts.set(l.credential.hash, m.script);
       return;
     }
