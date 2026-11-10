@@ -194,7 +194,7 @@ All types are exported, among them `ChainTx`, `LedgerInput`, `ChainInput`, `Grou
 
 `vectors/vectors.json` (also importable as `drep-groups/vectors/vectors.json`) holds 50 scenarios with inputs and expected results: open and permissioned lifecycles, the consent rule, signature-free policies, resign, policy rotation, retirement and re-registration, certificate ordering, script DReps including reference scripts, time locks, malformed payloads, duplicate keys and deeply nested data.
 
-Payloads are CBOR hex, so the file works for any language. An implementation passes when it produces the same `groups` and `instances` and the same `valid` flag for every verdict. Reason texts are informative. Compared groups include `resignedControl` and `resignedAdmission`. A ledger input can carry `referenceScriptsHex`: the raw `script_ref` values of the outputs that the registration transaction spends or uses as reference inputs, in output index order, absent when empty. Only native scripts resolve a member script.
+Payloads are CBOR hex, so the file works for any language. An implementation passes when it produces the same `groups` and `instances` and the same `valid` flag for every verdict. Reason texts are informative. Compared groups include `resignedControl` and `resignedAdmission`. A ledger input can carry `referenceScriptsHex`: the raw `script_ref` values of the outputs that the registration transaction spends or uses as reference inputs, in any order, absent when empty. Only native scripts resolve a member script.
 
 ## Development
 
