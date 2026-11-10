@@ -13,7 +13,7 @@ This package holds the rules in code: it decodes the metadata, checks every sign
 - **Open groups**: any registered DRep can join, anyone can leave at any time.
 - **Permissioned groups**: joining needs approval by the group's admission policy, leaving is always possible without anyone's consent.
 - **Multisig from day one**: a group is controlled by a native script (for example 3 of 5 admins). A separate admission policy can approve and remove members with its own threshold.
-- **Consent of listed admins**: every key a group names in a policy must sign once when it is added, so nobody can be shown as an admin without agreeing.
+- **Consent of listed admins**: every key a group names in a policy must sign explicitly, as a `required_signers` entry, when it is added to a role, so nobody can be shown as an admin without agreeing. A key can resign from its roles at any time.
 - **Profile**: name, description, website, logo, a link to the charter and optional payment addresses, stored as a CIP-100 document and referenced by hash.
 - **Website verification**: a group can prove a domain through a well-known file.
 
@@ -25,9 +25,10 @@ Every action is an ordinary transaction with a small metadata payload. There is 
 
 | Event | Signed by | Effect |
 |---|---|---|
-| `create` | every key of the new policies | new open or permissioned group |
-| `update` | control policy, plus every newly listed key | new policies or profile |
+| `create` | every key of the new policies, in `required_signers` | new open or permissioned group |
+| `update` | control policy, plus every key new to its role, in `required_signers` | new policies or profile |
 | `dissolve` | control policy | group closed for good, all memberships end |
+| `resign` | the resigning key, in `required_signers` | the key leaves every role whose policy lists it |
 | `join` | the DRep | member (open group) or pending request (permissioned) |
 | `approve` | admission policy | pending request becomes a membership |
 | `leave` | the DRep | membership or request ends, always allowed |
@@ -35,7 +36,9 @@ Every action is an ordinary transaction with a small metadata payload. There is 
 
 The rules this library enforces, in short:
 
-- **Signatures come from the transaction**, the union of `required_signers` and the vkey witnesses. A key-based DRep must appear in `required_signers`, so its wallet signed knowingly.
+- **Signatures come from the transaction**, the union of `required_signers` and the vkey witnesses, and satisfy the policies. Consent is stricter: a key that consents (listed in a new policy, resigning, or a key-based DRep joining) must appear in `required_signers`, so its wallet signed knowingly. A vkey witness alone never counts as consent.
+- **Policies need a signature**: a control or admission policy that can be satisfied without any signature, for example with only a time lock, is rejected when it is set.
+- **Group ids** are shown as bech32 `drep_group` over 33 bytes, the transaction hash and a one byte event index.
 - **Scripts must be on chain** at or before the event that uses them, published in the payload or, for script DReps, in their registration transaction. A cache can never change a verdict.
 - **Chain order decides**: block height, position in the block, certificates before metadata events. DRep registrations and retirements are part of the replay, a retirement ends every membership of that DRep.
 - **Control actions carry a sequence number**, so a stale multisig transaction cannot apply on top of a newer change.
@@ -124,7 +127,10 @@ const payload = encodePayload({
 - **Events and limits**: `encodePayload` takes `{ events, scripts? }` and throws `EncodeError` for anything the decoder would ignore: no events or more than 64, more than 8 scripts, a script beyond the node or depth limit, malformed hashes, a mode that does not match the admission policy, an empty anchor URL. Long anchor URLs and scripts are split into 64 byte chunks for you (`chunkText`, `chunkBytes`). `encodeNativeScript(script)` gives the bytes to hash with `nativeScriptHash`, `encodeCbor` is the small definite length writer underneath.
 - **Local references**: a group does not exist before its `create` is on chain, so the founding transaction refers to it as `{ local: 0 }`, the index of the earlier event in the same payload. The same works for founder `join` events in the create transaction. A local reference must point to an earlier event. Everything after that transaction uses the full reference `{ txHash, index }`.
 - **Publish every new policy**: put the script of every policy a `create` or `update` introduces into `scripts` (key 2). The indexer can only judge a policy it has seen on chain, and a policy that appears in no payload and no registration makes the event invalid ("control policy unresolved" or "new control policy unresolved").
-- **Consent**: a `create` needs the signature of every key listed in its control and admission policies. An `update` that sets a new policy needs the signature of every newly listed key, on top of the current control policy. Keys that stay do not sign again. Add them as `required_signers` or collect their vkey witnesses before submitting.
+- **Consent**: a `create` needs every key listed in its control and admission policies in `required_signers`. An `update` that sets a new policy needs every key new to that role in `required_signers`, on top of the current control policy. A key that stays in its role does not sign again, a key that moves from admission into control does, and a key that resigned from a role counts as new when a policy lists it again. A vkey witness does not replace the `required_signers` entry. Add every consenting key as `required_signers` before submitting.
+- **Resign**: a `resign` event names a key and needs only that key in `required_signers`, no control policy and no `seq`. The key leaves every role whose current policy lists it. Its `sig` counts as false in that role from then on, and `GroupState` lists it in `resignedControl` or `resignedAdmission`. A new policy for a role clears that role's resignations. A resign bumps `seq`, so control actions prepared before it become stale. It is rejected for a key that is listed in no role, or already resigned from every role it is in.
+- **Policies that need no signature**: `satisfiableWithoutSignature(script)` tells whether a script can be satisfied by a time lock alone. A `create` or `update` that sets such a policy is invalid.
+- **Script DReps and reference scripts**: the member script of a script DRep comes from the witness scripts of its registration transaction or from a native script in a reference script of an output that transaction spends or uses as a reference input. Set `LedgerInput.referenceScripts` to those `script_ref` values. `decodeTxRefs(cbor)` reads the script references of a transaction's outputs, a collateral return sits at index `outputs.length`. Plutus reference scripts resolve nothing.
 - **Majority scripts**: `majorityScript(keys, n)` returns an n of k script over key leaves as `{ script, bytes, hash, keys }`. Keys are lowercased, deduplicated and sorted ascending, so one key set and one threshold always give one script hash, whichever order the signers were collected in. It throws `EncodeError` for an invalid key or a threshold outside 1 to k.
 - **Approvals together with an update**: one transaction can carry `approve` events and a control `update`. Order the events with the approvals first, then the update, because events are judged in order and an approval after a policy change is checked against the new admission policy. The transaction must satisfy both policies, so collect the signatures of both.
 - **One control action at a time**: control actions carry `seq`. Read the group's current `seq` from the index, build the action with it and wait for it to be included before building the next one. A second action prepared in parallel becomes stale as soon as the first one is included, and a stale event is ignored. An `update` with an empty change set only increments `seq`, which cancels pending control actions on purpose.
@@ -138,7 +144,7 @@ const payload = encodePayload({
   }, tx);
   ```
 
-- **Profile context**: the profile document is CIP-100 JSON-LD. Embed the context object inline in the profile document, copied from `context/drep-groups-v1.jsonld` in the package. The GitHub URL `https://github.com/katomm/cardano-drep-groups/blob/main/context/drep-groups-v1.jsonld` serves only as the term namespace. It defines `name`, `description`, `website`, `image`, `charter` and `paymentAddresses` with `address`, `purpose` and `treasuryScript`. The anchor hash is blake2b-256 over the raw document bytes.
+- **Profile context**: the profile document is CIP-100 JSON-LD. Embed the context object inline in the profile document, copied from `context/drep-groups-v1.jsonld` in the package. The GitHub URL `https://github.com/katomm/cardano-drep-groups/blob/main/context/drep-groups-v1.jsonld` serves only as the term namespace. It defines `name`, `description`, `website`, `image`, `charter` and `paymentAddresses` with `address`, `purpose` and `paymentScript`. The anchor hash is blake2b-256 over the raw document bytes.
 
 ## API
 
@@ -162,7 +168,10 @@ const payload = encodePayload({
 | `effectiveClose(instance, dissolveAt, firstUnregAfterJoin, q?)` | when and why a membership ends: explicit close, dissolve or retirement, whichever comes first |
 | `comparePos(a, b)`, `endOf(height)`, `posOfCert(input)`, `posOfScripts(tx)`, `posOfEvent(tx, index)` | total order of certificates, payload scripts and events |
 | `scriptComplexity(script)` | node count and nesting depth of a native script, counted the way the payload limits count them |
-| `memberScriptWitness(credential, witnessScripts)` | the member script a script DRep's registration proves, `null` when no witness matches |
+| `memberScriptWitness(credential, witnessScripts, referenceScripts?)` | the member script a script DRep's registration proves through a witness or a native reference script, `null` when none matches |
+| `decodeTxRefs(cbor)` | inputs, reference inputs and the `script_ref` of every output of a transaction, for filling `LedgerInput.referenceScripts` |
+| `nativeScriptFromScriptRef(bytes)` | the native script inside a `script_ref` value, `null` for Plutus or malformed data |
+| `satisfiableWithoutSignature(script)` | whether a native script can be satisfied with no signature |
 | `drep-groups/conformance` | `generateChain`, `generateSchedule` and `runSchedule`: contract checks of a `Store` against `replay` |
 
 All types are exported, among them `ChainTx`, `LedgerInput`, `ChainInput`, `GroupState`, `Instance`, `EventVerdict` and `RegistryState`.
@@ -173,17 +182,17 @@ All types are exported, among them `ChainTx`, `LedgerInput`, `ChainInput`, `Grou
 
 ### Payment addresses
 
-`checkPaymentAddress({ address, treasuryScript }, network, state.scripts)` returns a `status`:
+`checkPaymentAddress({ address, paymentScript }, network, state.scripts)` returns a `status`:
 
 - `invalid`: not a bech32 address, wrong network, a pointer address or not a payment address. Do not show it.
-- `declared`: a valid base or enterprise address without a proven controller. `reason` says why a treasury claim did not hold.
-- `script-controlled`: the payment credential is a script, it equals `treasuryScript` and the script is published on chain. `script` holds it for display, for example "3 of 5: Alice, Bob, ...".
+- `declared`: a valid base or enterprise address without a proven controller. `reason` says why a payment script claim did not hold.
+- `script-controlled`: the payment credential is a script, it equals `paymentScript` and the script is published on chain. `script` holds it for display, for example "3 of 5: Alice, Bob, ...".
 
 `hasStake` is `false` for enterprise addresses, which cannot delegate their votes.
 
 ## Test vectors
 
-`vectors/vectors.json` (also importable as `drep-groups/vectors/vectors.json`) holds 26 scenarios with inputs and expected results: open and permissioned lifecycles, the consent rule, policy rotation, retirement and re-registration, certificate ordering, script DReps, time locks, malformed payloads, duplicate keys and deeply nested data.
+`vectors/vectors.json` (also importable as `drep-groups/vectors/vectors.json`) holds 48 scenarios with inputs and expected results: open and permissioned lifecycles, the consent rule, signature-free policies, resign, policy rotation, retirement and re-registration, certificate ordering, script DReps including reference scripts, time locks, malformed payloads, duplicate keys and deeply nested data.
 
 Payloads are CBOR hex, so the file works for any language. An implementation passes when it produces the same `groups` and `instances` and the same `valid` flag for every verdict. Reason texts are informative.
 

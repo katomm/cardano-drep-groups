@@ -104,7 +104,7 @@ describe('encodePayload', () => {
         compared++;
       }
     }
-    expect(compared).toBe(64);
+    expect(compared).toBe(99);
     expect([...new Set(skipped)]).toEqual([
       'founder joins through a local ref, local refs to the same or a later index fail',
       'phase-2-invalid transaction, wrong version and duplicate map key are ignored',

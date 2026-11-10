@@ -25,7 +25,7 @@ describe('JSON-LD context', () => {
     const paymentAddresses = nested(body.paymentAddresses);
     for (const [scope, fields] of [
       [body, ['name', 'description', 'website', 'image', 'charter', 'paymentAddresses']],
-      [paymentAddresses, ['address', 'purpose', 'treasuryScript']],
+      [paymentAddresses, ['address', 'purpose', 'paymentScript']],
     ] as const) {
       for (const f of fields) {
         const t = scope[f];

@@ -3,7 +3,7 @@ import { concatBytes, hexToBytes } from '../src/hex.js';
 import type { ChainInput } from '../src/types.js';
 import {
   after, allOf, anyOf, before, buildPayload, buildPayloadRaw, chunk64, ev, hashOf, K, kb, keyCred, local,
-  nOfK, ref, regIn, scriptBytes, scriptCred, sig, T, txIn, unregIn,
+  nOfK, ref, regIn, scriptBytes, scriptCred, scriptRefOf, sig, T, txIn, unregIn,
 } from '../test/helpers.js';
 
 export interface GroupExpect {
@@ -81,6 +81,24 @@ const nodes64 = anyOf(...leafKeys(63).map(sig));
 const nodes65 = anyOf(...leafKeys(64).map(sig));
 const depth8 = [1, 2, 3, 4, 5, 6, 7].reduce((x) => allOf(x), sig(K(1)));
 const depth9 = [1, 2, 3, 4, 5, 6, 7, 8].reduce((x) => allOf(x), sig(K(1)));
+
+// Review round rules: consent per role, signature-free policies, resign, reference scripts.
+const admK4 = nOfK(1, sig(K(1)), sig(K(4)));
+const ctrlK4 = nOfK(2, sig(K(1)), sig(K(2)), sig(K(4)));
+const lockC = anyOf(sig(K(1)), after(100));
+const adm2 = nOfK(1, sig(K(2)), sig(K(4)));
+const GP = (tx: string, o: Partial<GroupExpect> = {}): GroupExpect => G(tx, { mode: 'permissioned', admission: A, ...o });
+const permCreateAt = (hash: string, h: number) => txIn({ hash, h, payload: buildPayload([ev.create(1, C, A)], [ctrl, adm]), rs: ALL });
+const resignTx = (hash: string, h: number, key: string, rs: string[], group = T(1)) =>
+  txIn({ hash, h, payload: buildPayload([ev.resign(ref(group, 0), key)]), rs });
+const updateOn = (group: string, hash: string, h: number, seq: number, changes: Map<number, unknown>, rs: string[], scripts: unknown[][] = []) =>
+  txIn({ hash, h, payload: buildPayload([ev.update(ref(group, 0), seq, changes)], scripts), rs });
+const moveGroup = (rs: string[]) => [
+  txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(1, C, hashOf(admK4))], [ctrl, admK4]), rs: [...ALL, K(4)] }),
+  updateOn(T(1), T(2), 11, 0, new Map([[0, kb(hashOf(ctrlK4))]]), rs, [ctrlK4]),
+];
+const msRef = hashOf(ms);
+const refMemberJoin = txIn({ hash: T(2), h: 11, payload: buildPayload([ev.join(ref(T(1), 0), 'script', msRef)]), wk: [K(0x60), K(0x61)] });
 
 export const VECTORS: VectorDef[] = [
   {
@@ -210,7 +228,7 @@ export const VECTORS: VectorDef[] = [
     expect: { groups: [G(T(1))], instances: [I(T(2), 'active')], verdicts: [V(T(1), true), V(T(2), true), V(T(3), false, 'open group has no remove')] },
   },
   {
-    name: 'policy and consent satisfied by witnesses only',
+    name: 'consent by witness only',
     inputs: [txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(0, C, null)], [ctrl]), wk: ALL })],
     expect: { groups: [], instances: [], verdicts: [V(T(1), false, 'listed key did not sign explicitly')] },
   },
@@ -289,7 +307,7 @@ export const VECTORS: VectorDef[] = [
     },
   },
   {
-    name: 'policy and consent satisfied by required_signers and witnesses together',
+    name: 'a witness signature next to a required_signers key gives no consent',
     inputs: [txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(0, C, null)], [ctrl]), rs: [K(1)], wk: [K(2), K(3)] })],
     expect: { groups: [], instances: [], verdicts: [V(T(1), false, 'listed key did not sign explicitly')] },
   },
@@ -430,5 +448,137 @@ export const VECTORS: VectorDef[] = [
       }),
     ],
     expect: { groups: [G(T(1), { seq: '1' })], instances: [], verdicts: [V(T(1), true, null, 0), V(T(1), true, null, 1)] },
+  },
+  {
+    name: 'admission key moves into control without signing',
+    inputs: moveGroup([K(1), K(2)]),
+    expect: {
+      groups: [GP(T(1), { admission: hashOf(admK4) })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), false, 'key new to its role did not sign explicitly')],
+    },
+  },
+  {
+    name: 'admission key moves into control with signing',
+    inputs: moveGroup([K(1), K(2), K(4)]),
+    expect: {
+      groups: [GP(T(1), { seq: '1', control: hashOf(ctrlK4), admission: hashOf(admK4) })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), true)],
+    },
+  },
+  {
+    name: 'signature-free policies',
+    inputs: [
+      txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(1, C, hashOf(lockC))], [ctrl, lockC]), rs: ALL }),
+      txIn({ hash: T(2), h: 11, payload: buildPayload([ev.create(0, hashOf(lockC), null)], [lockC]), rs: [K(1)] }),
+      permCreateAt(T(3), 12),
+      updateOn(T(3), T(4), 13, 0, new Map([[0, kb(hashOf(lockC))]]), [K(1), K(2)], [lockC]),
+      updateOn(T(3), T(5), 14, 0, new Map([[1, kb(hashOf(lockC))]]), [K(1), K(2)], [lockC]),
+    ],
+    expect: {
+      groups: [GP(T(3))],
+      instances: [],
+      verdicts: [
+        V(T(1), false, 'admission policy needs no signature'),
+        V(T(2), false, 'control policy needs no signature'),
+        V(T(3), true),
+        V(T(4), false, 'control policy needs no signature'),
+        V(T(5), false, 'admission policy needs no signature'),
+      ],
+    },
+  },
+  {
+    name: 'resign from a shared policy',
+    inputs: [
+      reg, permCreate, join(T(2), 11), resignTx(T(3), 12, K(1), [K(1)]),
+      act('approve', T(2), T(4), 13, [K(1)]), act('approve', T(2), T(5), 14, [K(2)]),
+    ],
+    expect: {
+      groups: [GP(T(1), { seq: '1', resignedControl: [K(1)], resignedAdmission: [K(1)] })],
+      instances: [I(T(2), 'active')],
+      verdicts: [V(T(1), true), V(T(2), true), V(T(3), true), V(T(4), false, 'admission policy not satisfied'), V(T(5), true)],
+    },
+  },
+  {
+    name: 'resign then replace admission only',
+    inputs: [
+      permCreate, resignTx(T(2), 11, K(1), [K(1)]),
+      updateOn(T(1), T(3), 12, 1, new Map([[1, kb(hashOf(adm2))]]), [K(2), K(3), K(4)], [adm2]),
+      updateOn(T(1), T(4), 13, 2, new Map(), [K(1), K(2)]),
+    ],
+    expect: {
+      groups: [GP(T(1), { seq: '2', admission: hashOf(adm2), resignedControl: [K(1)], resignedAdmission: [] })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), true), V(T(3), true), V(T(4), false, 'control policy not satisfied')],
+    },
+  },
+  {
+    name: 'resign twice',
+    inputs: [permCreate, resignTx(T(2), 11, K(3), [K(3)]), resignTx(T(3), 12, K(3), [K(3)]), resignTx(T(4), 13, K(1), [K(1)])],
+    expect: {
+      groups: [GP(T(1), { seq: '2', resignedControl: [K(1), K(3)], resignedAdmission: [K(1)] })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), true), V(T(3), false, 'key not listed in any role'), V(T(4), true)],
+    },
+  },
+  {
+    name: 'resign by witness only',
+    inputs: [permCreate, txIn({ hash: T(2), h: 11, payload: buildPayload([ev.resign(ref(T(1), 0), K(1))]), wk: [K(1)] })],
+    expect: {
+      groups: [GP(T(1))],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), false, 'resigning key did not sign explicitly')],
+    },
+  },
+  {
+    name: 'resign then dissolve in one transaction',
+    inputs: [
+      permCreate,
+      txIn({ hash: T(2), h: 11, payload: buildPayload([ev.resign(ref(T(1), 0), K(1)), ev.dissolve(ref(T(1), 0), 1)]), rs: [K(1), K(2)] }),
+    ],
+    expect: {
+      groups: [GP(T(1), { seq: '1', resignedControl: [K(1)], resignedAdmission: [K(1)] })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), true, null, 0), V(T(2), false, 'control policy not satisfied', 1)],
+    },
+  },
+  {
+    name: 'dissolve then resign in one transaction',
+    inputs: [
+      permCreate,
+      txIn({ hash: T(2), h: 11, payload: buildPayload([ev.dissolve(ref(T(1), 0), 0), ev.resign(ref(T(1), 0), K(1))]), rs: [K(1), K(2)] }),
+    ],
+    expect: {
+      groups: [GP(T(1), { status: 'dissolved' })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), true, null, 0), V(T(2), false, 'group dissolved', 1)],
+    },
+  },
+  {
+    name: 'resign makes a pending update stale',
+    inputs: [
+      permCreate, resignTx(T(2), 11, K(1), [K(1)]),
+      updateOn(T(1), T(3), 12, 0, new Map(), [K(2), K(3)]),
+    ],
+    expect: {
+      groups: [GP(T(1), { seq: '1', resignedControl: [K(1)], resignedAdmission: [K(1)] })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), true), V(T(3), false, 'stale seq')],
+    },
+  },
+  {
+    name: 'member script from a reference script',
+    inputs: [regIn(scriptCred(msRef), T(0x43), 6, 0, undefined, [scriptRefOf(0, scriptBytes(ms))]), openCreate(), refMemberJoin],
+    expect: {
+      groups: [G(T(1))],
+      instances: [I(T(2), 'active', null, { member: `script:${msRef}` })],
+      verdicts: [V(T(1), true), V(T(2), true)],
+    },
+  },
+  {
+    name: 'plutus reference script resolves nothing',
+    inputs: [regIn(scriptCred(msRef), T(0x43), 6, 0, undefined, [scriptRefOf(2, scriptBytes(ms))]), openCreate(), refMemberJoin],
+    expect: { groups: [G(T(1))], instances: [], verdicts: [V(T(1), true), V(T(2), false, 'member script unresolved')] },
   },
 ];
