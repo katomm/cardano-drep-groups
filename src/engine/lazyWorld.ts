@@ -207,7 +207,7 @@ function controlKeys(stage: 1 | 2 | 3, { routed }: ControlInputs, partial: LazyW
       name(r.ref, e.control, e.admission);
       continue;
     }
-    if (e.tag !== 'update' && e.tag !== 'dissolve') continue;
+    if (e.tag !== 'update' && e.tag !== 'dissolve' && e.tag !== 'resign') continue;
     const g = resolve(e.group, r.ref);
     if (!g) continue;
     out.group(g, r.at);
@@ -217,7 +217,8 @@ function controlKeys(stage: 1 | 2 | 3, { routed }: ControlInputs, partial: LazyW
       out.script(e.changes.admission, r.at);
       name(g, e.changes.control, e.changes.admission);
     }
-    // The current policies of the group, for the control check and the consent rule.
+    // The current policies of the group, for the control check, the consent rule and the
+    // roles a resigning key is listed in.
     const v = stage >= 2 && partial ? partial.groupAt(g, r.at) : null;
     if (v) {
       out.script(v.control, r.at);

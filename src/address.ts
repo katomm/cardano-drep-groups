@@ -13,11 +13,11 @@ export interface AddressCheck {
 const invalid = (reason: string): AddressCheck => ({ status: 'invalid', reason, hasStake: false, script: null });
 
 // Spec A6: a listed address is script-controlled only when its payment
-// credential is a script whose hash equals the declared and resolved treasury
+// credential is a script whose hash equals the declared and resolved payment
 // script. Anything else is shown as a declared address. Pointer addresses are
 // rejected, base and enterprise addresses are supported.
 export function checkPaymentAddress(
-  entry: { address: string; treasuryScript?: string },
+  entry: { address: string; paymentScript?: string },
   network: Network,
   scripts: ReadonlyMap<Hex, NativeScript>,
 ): AddressCheck {
@@ -43,12 +43,12 @@ export function checkPaymentAddress(
   const paymentIsScript = type % 2 === 1;
   const payment = bytesToHex(bytes.subarray(1, 29));
   const declared = (reason: string | null): AddressCheck => ({ status: 'declared', reason, hasStake, script: null });
-  if (entry.treasuryScript === undefined) return declared(null);
-  const th = entry.treasuryScript.toLowerCase();
-  if (!/^[0-9a-f]{56}$/.test(th)) return declared('treasury script is not a 28 byte hash');
+  if (entry.paymentScript === undefined) return declared(null);
+  const th = entry.paymentScript.toLowerCase();
+  if (!/^[0-9a-f]{56}$/.test(th)) return declared('payment script is not a 28 byte hash');
   if (!paymentIsScript) return declared('payment credential is not a script');
-  if (payment !== th) return declared('treasury script does not match the address');
+  if (payment !== th) return declared('payment script does not match the address');
   const script = scripts.get(th);
-  if (!script) return declared('treasury script unresolved');
+  if (!script) return declared('payment script unresolved');
   return { status: 'script-controlled', reason: null, hasStake, script };
 }

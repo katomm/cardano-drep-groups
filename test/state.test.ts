@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { orderInputs, replay } from '../src/state.js';
-import { allOf, buildPayload, ev, hashOf, K, kb, keyCred, local, nOfK, ref, regIn, scriptBytes, scriptCred, sig, T, txIn, unregIn } from './helpers.js';
+import { allOf, buildPayload, ev, hashOf, K, kb, keyCred, local, nOfK, ref, regIn, scriptBytes, scriptCred, scriptRefOf, sig, T, txIn, unregIn } from './helpers.js';
 
 const ctrl = nOfK(2, sig(K(1)), sig(K(2)), sig(K(3)));
 const C = hashOf(ctrl);
@@ -26,11 +26,13 @@ describe('replay: groups', () => {
   });
 
   it('rejects create when a listed key did not sign', () => {
-    expect(replay([createTx({ rs: [K(1), K(2)] })]).verdicts[0]).toMatchObject({ valid: false, reason: 'listed key did not sign' });
+    expect(replay([createTx({ rs: [K(1), K(2)] })]).verdicts[0]).toMatchObject({ valid: false, reason: 'listed key did not sign explicitly' });
   });
 
-  it('counts witness keys towards policy and consent', () => {
-    expect(replay([createTx({ rs: [], wk: ALL })]).groups.length).toBe(1);
+  it('counts witness keys towards the policy but not towards consent', () => {
+    const s = replay([createTx({ rs: [], wk: ALL })]);
+    expect(s.groups).toEqual([]);
+    expect(s.verdicts[0]).toMatchObject({ valid: false, reason: 'listed key did not sign explicitly' });
   });
 
   it('rejects a policy published after its first use', () => {
@@ -65,7 +67,7 @@ describe('replay: groups', () => {
     const oldKeys = upd(T(4), 13, 1, new Map(), [K(1), K(2)]);
     const newKey = upd(T(5), 14, 1, new Map(), [K(4)]);
     const s = replay([createTx(), noConsent, withConsent, oldKeys, newKey]);
-    expect(s.verdicts.map((v) => v.reason)).toEqual([null, 'newly listed key did not sign', null, 'control policy not satisfied', null]);
+    expect(s.verdicts.map((v) => v.reason)).toEqual([null, 'key new to its role did not sign explicitly', null, 'control policy not satisfied', null]);
     expect(s.groups[0]).toMatchObject({ control: hashOf(newCtrl), seq: 2n });
   });
 
@@ -195,6 +197,16 @@ describe('replay: membership', () => {
     const j = txIn({ hash: T(2), h: 11, payload: buildPayload([ev.join(ref(T(1), 0), 'script', SC)]), wk: [K(0x60), K(0x61)] });
     expect(replay([regIn(scriptCred(SC), T(0x40), 5, 0, [scriptBytes(ms)]), openCreate, j]).verdicts[1]?.valid).toBe(true);
     expect(replay([regIn(scriptCred(SC), T(0x40), 5), openCreate, j]).verdicts[1]?.reason).toBe('member script unresolved');
+  });
+
+  it('script DRep member resolves from a reference script of its registration, never a Plutus one', () => {
+    const ms = allOf(sig(K(0x60)), sig(K(0x61)));
+    const SC = hashOf(ms);
+    const j = txIn({ hash: T(2), h: 11, payload: buildPayload([ev.join(ref(T(1), 0), 'script', SC)]), wk: [K(0x60), K(0x61)] });
+    const native = regIn(scriptCred(SC), T(0x40), 5, 0, undefined, [scriptRefOf(0, scriptBytes(ms))]);
+    expect(replay([native, openCreate, j]).verdicts[1]).toMatchObject({ valid: true, reason: null });
+    const plutus = regIn(scriptCred(SC), T(0x40), 5, 0, undefined, [scriptRefOf(2, scriptBytes(ms))]);
+    expect(replay([plutus, openCreate, j]).verdicts[1]).toMatchObject({ valid: false, reason: 'member script unresolved' });
   });
 });
 

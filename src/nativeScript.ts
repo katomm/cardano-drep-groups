@@ -1,4 +1,4 @@
-import { readHead } from './cborSpan.js';
+import { arrayItemOffsets, itemEnd, readHead, readUint } from './cborSpan.js';
 import { nativeScriptHash } from './hash.js';
 import { bytesToHex } from './hex.js';
 import type { Credential, EvalContext, Hex, NativeScript } from './types.js';
@@ -265,6 +265,33 @@ export function evaluateNativeScript(s: NativeScript, ctx: EvalContext): boolean
   return result;
 }
 
+// Can the script evaluate true with an empty signer set at some slot? A sig never does,
+// after and before can for a suitable slot. Iterative post-order walk like the other walks.
+export function satisfiableWithoutSignature(s: NativeScript): boolean {
+  const stack: { script: NativeScript; next: number; results: boolean[] }[] = [{ script: s, next: 0, results: [] }];
+  let result = false;
+  while (stack.length > 0) {
+    const top = stack[stack.length - 1]!;
+    const sc = top.script;
+    if (sc.type === 'sig') result = false;
+    else if (sc.type === 'after' || sc.type === 'before') result = true;
+    else {
+      if (top.next < sc.scripts.length) {
+        stack.push({ script: sc.scripts[top.next]!, next: 0, results: [] });
+        top.next += 1;
+        continue;
+      }
+      if (sc.type === 'all') result = top.results.every((r) => r);
+      else if (sc.type === 'any') result = top.results.some((r) => r);
+      else result = BigInt(top.results.filter((r) => r).length) >= sc.n;
+    }
+    stack.pop();
+    const parent = stack[stack.length - 1];
+    if (parent) parent.results.push(result);
+  }
+  return result;
+}
+
 export function collectKeyHashes(s: NativeScript): Hex[] {
   const out: Hex[] = [];
   const stack: NativeScript[] = [s];
@@ -302,16 +329,45 @@ export function scriptComplexity(s: NativeScript): { nodes: number; depth: numbe
   return { nodes, depth };
 }
 
-// The member script a DRep registration proves: the first witness script of the reg_drep
-// tx whose hash equals the script credential's hash and that parses. Null for a key
-// credential and for a registration without such a witness (one that satisfied the
-// script through a reference script, for example). Every match has the same hash and so
-// the same bytes, which script of several matches is taken makes no difference.
+// The native script inside a script_ref value: CBOR tag 24 around a byte string whose
+// content is [language, script]. Language 0 (native) gives the inner script bytes as an
+// exact span of the input, so they hash like the same script from a witness set. Any other
+// language, a missing or other tag and malformed or trailing bytes give null.
+export function nativeScriptFromScriptRef(scriptRef: Uint8Array): Uint8Array | null {
+  try {
+    const tag = readHead(scriptRef, 0);
+    if (tag.major !== 6 || tag.big !== 24n) return null;
+    const str = readHead(scriptRef, tag.next);
+    if (str.major !== 2 || str.indefinite || str.next + Number(str.big) !== scriptRef.length) return null;
+    const content = scriptRef.subarray(str.next);
+    // The pair may be definite or indefinite, as parseNativeScript accepts both.
+    if (readHead(content, 0).major !== 4 || itemEnd(content, 0) !== content.length) return null;
+    const items = arrayItemOffsets(content, 0);
+    if (items.length !== 2) return null;
+    const [langOff, scriptOff] = items as [number, number];
+    if (readUint(content, langOff) !== 0) return null;
+    return content.slice(scriptOff, itemEnd(content, scriptOff));
+  } catch {
+    return null;
+  }
+}
+
+// The member script a DRep registration proves: the first script whose hash equals the
+// script credential's hash and that parses, from the witness set of the reg_drep tx first,
+// then from the native reference scripts on the outputs that tx spends or references.
+// Null for a key credential and for a registration without such a script. Every match has
+// the same hash and so the same bytes, which script of several matches is taken makes no
+// difference.
 export function memberScriptWitness(
-  credential: Credential, witnessScripts: readonly Uint8Array[] | undefined,
+  credential: Credential, witnessScripts: readonly Uint8Array[] | undefined, referenceScripts?: readonly Uint8Array[],
 ): { script: NativeScript; bytes: Uint8Array } | null {
   if (credential.kind !== 'script') return null;
-  for (const bytes of witnessScripts ?? []) {
+  const candidates = [...(witnessScripts ?? [])];
+  for (const r of referenceScripts ?? []) {
+    const inner = nativeScriptFromScriptRef(r);
+    if (inner) candidates.push(inner);
+  }
+  for (const bytes of candidates) {
     if (nativeScriptHash(bytes) !== credential.hash) continue;
     const script = parseNativeScript(bytes);
     if (script) return { script, bytes };

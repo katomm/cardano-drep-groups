@@ -42,7 +42,7 @@ const G1: EventRef = { txHash: T(2), index: 0 };
 const createdAt = posOfEvent({ txHash: T(2), blockHeight: 2, txIndex: 0 }, 0);
 const v0 = (o: Partial<GroupVersion> = {}): GroupVersion => ({
   id: G1, at: createdAt, mode: 'permissioned', control: hashOf(C0), admission: hashOf(A0), profile: null,
-  seq: 0n, status: 'active', createdAt, profileSetAt: null, ...o,
+  seq: 0n, status: 'active', createdAt, profileSetAt: null, resignedControl: [], resignedAdmission: [], ...o,
 });
 
 describe('applyControl', () => {
@@ -131,7 +131,7 @@ describe('applyControl', () => {
     expect(cs.versions).toMatchObject([{ seq: 1n, control: hashOf(C1), admission: hashOf(A1) }]);
     // A key that newly appears must have signed, the old keys need not.
     const unsigned = chainTx({ hash: T(10), h: 10, rs: [K(1), K(3)], payload: tx.payload });
-    expect(done(runControl(c, unsigned).step).verdicts).toMatchObject([{ valid: false, reason: 'newly listed key did not sign' }]);
+    expect(done(runControl(c, unsigned).step).verdicts).toMatchObject([{ valid: false, reason: 'key new to its role did not sign explicitly' }]);
   });
 
   it('a create in one tx and its update in the next tx of the same batch see each other through the overlay', () => {

@@ -98,6 +98,7 @@ const byPos = <T>(at: (x: T) => Pos, id: (x: T) => string) => (a: T, b: T): numb
 const groupOf = (g: GroupState): GroupState => ({
   id: g.id, mode: g.mode, control: g.control, admission: g.admission, profile: g.profile,
   seq: g.seq, status: g.status, createdAt: g.createdAt, profileSetAt: g.profileSetAt,
+  resignedControl: g.resignedControl, resignedAdmission: g.resignedAdmission,
 });
 
 export function replayProjection(s: RegistryState): DisplayProjection {

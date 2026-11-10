@@ -6,9 +6,9 @@ import { parseNativeScript } from '../src/nativeScript.js';
 import type { NativeScript } from '../src/types.js';
 import { hashOf, K, nOfK, scriptBytes, sig } from './helpers.js';
 
-const treasury = nOfK(2, sig(K(1)), sig(K(2)), sig(K(3)));
-const TH = hashOf(treasury);
-const scripts = new Map<string, NativeScript>([[TH, parseNativeScript(scriptBytes(treasury)) as NativeScript]]);
+const payment = nOfK(2, sig(K(1)), sig(K(2)), sig(K(3)));
+const TH = hashOf(payment);
+const scripts = new Map<string, NativeScript>([[TH, parseNativeScript(scriptBytes(payment)) as NativeScript]]);
 
 function addr(type: number, netId: number, payment: string, tail?: string): string {
   const extra = tail ? hexToBytes(tail) : new Uint8Array(0);
@@ -20,22 +20,22 @@ function addr(type: number, netId: number, payment: string, tail?: string): stri
 }
 
 describe('checkPaymentAddress', () => {
-  it('marks a base script address with matching treasury script as script-controlled', () => {
-    const r = checkPaymentAddress({ address: addr(3, 1, TH, K(9)), treasuryScript: TH }, 'mainnet', scripts);
+  it('marks a base script address with matching payment script as script-controlled', () => {
+    const r = checkPaymentAddress({ address: addr(3, 1, TH, K(9)), paymentScript: TH }, 'mainnet', scripts);
     expect(r).toMatchObject({ status: 'script-controlled', hasStake: true, reason: null });
     expect(r.script?.type).toBe('nOfK');
   });
   it('enterprise script address has no stake part', () => {
-    expect(checkPaymentAddress({ address: addr(7, 1, TH), treasuryScript: TH }, 'mainnet', scripts)).toMatchObject({ status: 'script-controlled', hasStake: false });
+    expect(checkPaymentAddress({ address: addr(7, 1, TH), paymentScript: TH }, 'mainnet', scripts)).toMatchObject({ status: 'script-controlled', hasStake: false });
   });
   it('a key payment credential with the same hash is only declared', () => {
-    expect(checkPaymentAddress({ address: addr(0, 1, TH, K(9)), treasuryScript: TH }, 'mainnet', scripts)).toMatchObject({ status: 'declared', reason: 'payment credential is not a script' });
+    expect(checkPaymentAddress({ address: addr(0, 1, TH, K(9)), paymentScript: TH }, 'mainnet', scripts)).toMatchObject({ status: 'declared', reason: 'payment credential is not a script' });
   });
-  it('non matching and unresolved treasury scripts are only declared', () => {
-    expect(checkPaymentAddress({ address: addr(3, 1, K(5), K(9)), treasuryScript: TH }, 'mainnet', scripts).reason).toBe('treasury script does not match the address');
-    expect(checkPaymentAddress({ address: addr(3, 1, K(5), K(9)), treasuryScript: K(5) }, 'mainnet', scripts).reason).toBe('treasury script unresolved');
+  it('non matching and unresolved payment scripts are only declared', () => {
+    expect(checkPaymentAddress({ address: addr(3, 1, K(5), K(9)), paymentScript: TH }, 'mainnet', scripts).reason).toBe('payment script does not match the address');
+    expect(checkPaymentAddress({ address: addr(3, 1, K(5), K(9)), paymentScript: K(5) }, 'mainnet', scripts).reason).toBe('payment script unresolved');
   });
-  it('an address without treasury script is declared', () => {
+  it('an address without payment script is declared', () => {
     expect(checkPaymentAddress({ address: addr(0, 1, K(5), K(9)) }, 'mainnet', scripts)).toMatchObject({ status: 'declared', reason: null });
   });
   it('rejects pointer addresses, the wrong network and garbage', () => {

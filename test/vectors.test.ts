@@ -10,7 +10,7 @@ const FILE = new URL('../vectors/vectors.json', import.meta.url);
 function serialize(defs: VectorDef[]): unknown {
   return {
     version: 1,
-    compare: 'groups (including the profile anchor URL and hash) and instances exactly, verdicts by ref and valid. reason texts are informative.',
+    compare: 'groups (including the profile anchor URL and hash) and instances exactly, verdicts by ref and valid. reason texts are informative. groups carry resignedControl and resignedAdmission (sorted lowercase hex key hashes). a ledger input may carry referenceScriptsHex, the raw script_ref values (tag 24 around [language, script]) of the outputs that the registration transaction spends or uses as reference inputs, in any order, absent when empty. only native ones resolve a member script.',
     vectors: defs.map((d) => ({
       name: d.name,
       inputs: d.inputs.map((x) =>
@@ -26,6 +26,8 @@ function serialize(defs: VectorDef[]): unknown {
               kind: 'ledger', type: x.input.kind, credential: x.input.credential, txHash: x.input.txHash,
               blockHeight: x.input.blockHeight, txIndex: x.input.txIndex, certIndex: x.input.certIndex,
               witnessScriptsHex: (x.input.witnessScripts ?? []).map(bytesToHex),
+              // Omitted when empty, so vectors without reference scripts keep their bytes.
+              ...(x.input.referenceScripts?.length ? { referenceScriptsHex: x.input.referenceScripts.map(bytesToHex) } : {}),
             },
       ),
       expect: d.expect,
@@ -55,6 +57,7 @@ function fromJson(inputs: any[]): ChainInput[] {
           input: {
             kind: x.type, credential: x.credential, txHash: x.txHash, blockHeight: x.blockHeight, txIndex: x.txIndex,
             certIndex: x.certIndex, witnessScripts: x.witnessScriptsHex.map(hexToBytes),
+            referenceScripts: (x.referenceScriptsHex ?? []).map(hexToBytes),
           },
         },
   );
@@ -65,6 +68,7 @@ function summarize(s: RegistryState) {
     groups: s.groups.map((g) => ({
       id: refKey(g.id), status: g.status, seq: g.seq.toString(), mode: g.mode,
       control: g.control, admission: g.admission, profileUrl: g.profile ? g.profile.url : null, profileHash: g.profile ? g.profile.dataHash : null,
+      resignedControl: g.resignedControl, resignedAdmission: g.resignedAdmission,
     })),
     instances: s.instances.map((i) => ({ joinId: refKey(i.joinId), group: refKey(i.group), member: credKey(i.member), state: i.state, reason: i.reason })),
     verdicts: s.verdicts.map((v) => ({ ref: refKey(v.ref), valid: v.valid, reason: v.reason })),

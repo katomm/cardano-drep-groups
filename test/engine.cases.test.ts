@@ -36,7 +36,7 @@ const G = (n: number): unknown[] => ref(T(n), 0);
 const J = (n: number): unknown[] => ref(T(n), 0);
 
 const create = (tx: number, h: number, mode: 0 | 1): ChainInput =>
-  txIn({ hash: T(tx), h, wk: [A], payload: buildPayload([ev.create(mode, ctl, mode === 1 ? ctl : null)], [CTL]) });
+  txIn({ hash: T(tx), h, rs: [A], payload: buildPayload([ev.create(mode, ctl, mode === 1 ? ctl : null)], [CTL]) });
 // A key join, signed through required_signers unless `signed` is false.
 const join = (tx: number, h: number, group: unknown[], member = M, signed = true): ChainInput =>
   txIn({ hash: T(tx), h, rs: signed ? [member] : [], wk: [member], payload: buildPayload([ev.join(group, 'key', member)]) });
@@ -440,7 +440,7 @@ describe('named engine cases', () => {
       deliver(
         reg(m, 0, 5), create(0x10, 10, 0),
         txIn({ hash: T(0x20), h: 20, rs: [M], payload: buildPayload([ev.join(G(0x10), 'key', M)], [NEW]) }),
-        txIn({ hash: T(0x30), h: 30, wk: [A, K(5)], payload: buildPayload([ev.update(G(0x10), 0, new Map([[0, kb(hashOf(NEW))]]))]) }),
+        txIn({ hash: T(0x30), h: 30, rs: [A, K(5)], payload: buildPayload([ev.update(G(0x10), 0, new Map([[0, kb(hashOf(NEW))]]))]) }),
       ),
       frontiers(30), run({ controlTxs: 1 }), run({ controlTxs: 1 }), run({ controlTxs: 1 }), run({ controlTxs: 1 }),
     ];
@@ -467,7 +467,7 @@ describe('named engine cases', () => {
 
   it('same tx folds', async () => {
     const membership = txIn({
-      hash: T(0x10), h: 10, rs: [M], wk: [A],
+      hash: T(0x10), h: 10, rs: [M, A],
       payload: buildPayload([
         ev.create(1, ctl, ctl),            // 0, its control script is in this payload
         ev.update(local(0), 0, new Map()), // 1
@@ -479,7 +479,7 @@ describe('named engine cases', () => {
       ], [CTL]),
     });
     const control = txIn({
-      hash: T(0x11), h: 11, wk: [A2],
+      hash: T(0x11), h: 11, rs: [A2],
       payload: buildPayload([ev.create(0, hashOf(CTL2), null), ev.dissolve(local(0), 0)], [CTL2]),
     });
     const steps = [deliver(reg(m, 0, 5), membership, control), frontiers(11), run({ controlTxs: 1, credentialInputs: 1 })];
@@ -491,6 +491,31 @@ describe('named engine cases', () => {
     const groups = new Map(r.final.groups.map((g) => [g.id.txHash, g]));
     expect(groups.get(T(0x10))).toMatchObject({ seq: 1n, status: 'active' });
     expect(groups.get(T(0x11))).toMatchObject({ status: 'dissolved' });
+  });
+
+  it('resigns in the group plane and a resigned admission key in the membership plane', async () => {
+    // A creates a group and resigns from both roles in one tx, so the dissolve after it fails.
+    const frozen = txIn({
+      hash: T(0x10), h: 10, rs: [A],
+      payload: buildPayload([ev.create(1, ctl, ctl), ev.resign(local(0), A), ev.dissolve(local(0), 1)], [CTL]),
+    });
+    // A dissolve before the resign wins, the resign then finds the group dissolved.
+    const gone = txIn({
+      hash: T(0x11), h: 11, rs: [A2],
+      payload: buildPayload([ev.create(0, hashOf(CTL2), null), ev.dissolve(local(0), 0), ev.resign(local(0), A2)], [CTL2]),
+    });
+    const steps = [
+      deliver(reg(m, 0, 5), frozen, gone, join(0x20, 20, G(0x10)), byA(0x30, 30, ev.approve(J(0x20)))),
+      frontiers(30), run({ controlTxs: 1, credentialInputs: 1 }),
+    ];
+    const r = await go(steps);
+    expect([0, 1, 2].map((i) => reasonOf(r.final, 0x10, i))).toEqual([null, null, 'control policy not satisfied']);
+    expect([0, 1, 2].map((i) => reasonOf(r.final, 0x11, i))).toEqual([null, null, 'group dissolved']);
+    expect(reasonOf(r.final, 0x20)).toBeNull();
+    expect(reasonOf(r.final, 0x30)).toBe('admission policy not satisfied');
+    const groups = new Map(r.final.groups.map((g) => [g.id.txHash, g]));
+    expect(groups.get(T(0x10))).toMatchObject({ seq: 1n, status: 'active', resignedControl: [A], resignedAdmission: [A] });
+    expect(groups.get(T(0x11))).toMatchObject({ status: 'dissolved', resignedControl: [] });
   });
 
   it('a join naming an unknown group', async () => {

@@ -5,7 +5,7 @@ import { ALL_REASONS, controlRule, eventRule, type GroupVersion, membershipRule,
 import { refKey, replay } from '../src/state.js';
 import type { Credential, EvalContext, EventRef, GroupEvent, Hex, NativeScript } from '../src/types.js';
 import { VECTORS } from '../vectors/definitions.js';
-import { K, T } from './helpers.js';
+import { allOf, buildPayload, ev, hashOf, K, kb, keyCred, nOfK, ref, regIn, sig, T, txIn } from './helpers.js';
 
 const p = (h: number, i = 0): Pos => ({ blockHeight: h, txIndex: 0, txHash: T(h), phase: 2, index: i });
 const cert = (h: number): Pos => ({ blockHeight: h, txIndex: 0, txHash: T(h), phase: 0, index: 0 });
@@ -21,7 +21,7 @@ const required = new Set([K(1)]);
 
 const version = (o: Partial<GroupVersion> & { at: Pos }): GroupVersion => ({
   id: G, mode: 'open', control: CONTROL, admission: null, profile: null, seq: 0n,
-  status: 'active', createdAt: p(5), profileSetAt: null, ...o,
+  status: 'active', createdAt: p(5), profileSetAt: null, resignedControl: [], resignedAdmission: [], ...o,
 });
 const instance = (o: Partial<StoredInstance> & { joinId: EventRef; joinedAt: Pos }): StoredInstance => ({
   group: G, member: M, mode: 'open', approvedAt: null, closedAt: null, closeReason: null, ...o,
@@ -128,7 +128,7 @@ describe('rules over a lazy world', () => {
 
   it('a dissolve writes the dissolved version only, never instances', () => {
     const w = lazyWorld({ versions: [version({ at: p(5) })], instances: [instance({ joinId: J, joinedAt: p(10) })] });
-    expect(controlRule(w, { tag: 'dissolve', group: G, seq: 0n }, selfAt(30), ctx, p(30))).toEqual({
+    expect(controlRule(w, { tag: 'dissolve', group: G, seq: 0n }, selfAt(30), ctx, required, p(30))).toEqual({
       reason: null, group: G, subject: null,
       writes: [{ kind: 'version', version: version({ at: p(30), status: 'dissolved' }) }],
     });
@@ -137,7 +137,7 @@ describe('rules over a lazy world', () => {
   it('an update writes a new version at its position with the next seq', () => {
     const w = lazyWorld({ versions: [version({ at: p(5) })] });
     const profile = { url: 'https://x', dataHash: 'dd'.repeat(32) };
-    const r = controlRule(w, { tag: 'update', group: G, seq: 0n, changes: { profile } }, selfAt(30), ctx, p(30));
+    const r = controlRule(w, { tag: 'update', group: G, seq: 0n, changes: { profile } }, selfAt(30), ctx, required, p(30));
     expect(r.writes).toEqual([{ kind: 'version', version: version({ at: p(30), seq: 1n, profile, profileSetAt: p(30) }) }]);
   });
 
@@ -146,6 +146,144 @@ describe('rules over a lazy world', () => {
     const create: GroupEvent = { tag: 'create', mode: 'open', control: CONTROL, admission: null, profile: null };
     expect(membershipRule(w, create, selfAt(30), ctx, required, p(30)))
       .toEqual({ reason: 'unknown event', group: null, subject: null, writes: [] });
+  });
+});
+
+describe('consent by explicit signature, per role', () => {
+  const k1 = sig(K(1));
+  const k2 = sig(K(2));
+  const create = (mode: 0 | 1, control: unknown[], admission: unknown[] | null, rs: string[], wk: string[] = []) =>
+    txIn({
+      hash: T(1), h: 10, rs, wk,
+      payload: buildPayload([ev.create(mode, hashOf(control), admission ? hashOf(admission) : null)], admission ? [control, admission] : [control]),
+    });
+  const update = (changes: Map<number, unknown>, scripts: unknown[][], rs: string[], wk: string[] = []) =>
+    txIn({ hash: T(2), h: 11, rs, wk, payload: buildPayload([ev.update(ref(T(1), 0), 0, changes)], scripts) });
+  const reasons = (inputs: Parameters<typeof replay>[0]) => replay(inputs).verdicts.map((v) => v.reason);
+
+  it('a create needs every listed key in required_signers, a vkey witness is not enough', () => {
+    expect(reasons([create(0, k1, null, [], [K(1)])])).toEqual(['listed key did not sign explicitly']);
+    expect(reasons([create(0, k1, null, [K(1)])])).toEqual([null]);
+  });
+
+  it('a key moving from admission into control signs explicitly again', () => {
+    const both = allOf(k1, k2);
+    const set = new Map([[0, kb(hashOf(both))]]);
+    const base = create(1, k1, k2, [K(1), K(2)]);
+    expect(reasons([base, update(set, [both], [K(1)], [K(2)])])).toEqual([null, 'key new to its role did not sign explicitly']);
+    expect(reasons([base, update(set, [both], [K(1), K(2)])])).toEqual([null, null]);
+  });
+
+  it('policy satisfaction still counts vkey witnesses', () => {
+    const two = nOfK(2, k1, k2);
+    expect(reasons([create(0, two, null, [K(1), K(2)]), update(new Map(), [], [K(1)], [K(2)])])).toEqual([null, null]);
+  });
+
+  it('a control key that joins the admission role signs explicitly for it', () => {
+    const both = allOf(k1, k2);
+    const set = new Map([[1, kb(hashOf(both))]]);
+    expect(reasons([create(1, k1, k2, [K(1), K(2)]), update(set, [both], [K(2)], [K(1)])]))
+      .toEqual([null, 'key new to its role did not sign explicitly']);
+  });
+
+  it('a key the role already lists may sign only as a witness on an update that keeps it', () => {
+    const next = allOf(k1, sig(K(3)));
+    const set = new Map([[0, kb(hashOf(next))]]);
+    expect(reasons([create(0, nOfK(1, k1, k2), null, [K(1), K(2)]), update(set, [next], [K(2), K(3)], [K(1)])])).toEqual([null, null]);
+  });
+});
+
+describe('resignation per role', () => {
+  const k1 = sig(K(1));
+  const k3 = sig(K(3));
+  const shared = nOfK(1, k1, sig(K(2)));
+  const one3 = nOfK(1, k1, k3);
+  const M = K(0x50);
+  const G1 = ref(T(1), 0);
+  const tx = (h: number, events: unknown[][], rs: string[], wk: string[] = [], scripts: unknown[][] = []) =>
+    txIn({ hash: T(h), h, rs, wk, payload: buildPayload(events, scripts) });
+  // Control and admission are the same 1 of [K1, K2] script, K1 resigns from both roles.
+  const base = [
+    tx(1, [ev.create(1, hashOf(shared), hashOf(shared))], [K(1), K(2)], [], [shared]),
+    tx(2, [ev.resign(G1, K(1))], [K(1)]),
+  ];
+  const reasons = (inputs: Parameters<typeof replay>[0]) => replay(inputs).verdicts.map((v) => v.reason);
+  const group = (inputs: Parameters<typeof replay>[0]) => replay(inputs).groups[0]!;
+
+  it('a resign from a shared policy records the key in both roles and drops its signature there', () => {
+    expect(reasons(base)).toEqual([null, null]);
+    expect(group(base)).toMatchObject({ seq: 1n, resignedControl: [K(1)], resignedAdmission: [K(1)] });
+    expect(reasons([...base, tx(3, [ev.update(G1, 1, new Map())], [K(1)])])[2]).toBe('control policy not satisfied');
+    expect(reasons([...base, tx(3, [ev.update(G1, 1, new Map())], [K(2)])])[2]).toBeNull();
+  });
+
+  it('an update that sets one role clears the resignations of that role only', () => {
+    const relist = tx(3, [ev.update(G1, 1, new Map([[1, kb(hashOf(one3))]]))], [K(2), K(1), K(3)], [], [one3]);
+    expect(reasons([...base, relist])[2]).toBeNull();
+    expect(group([...base, relist])).toMatchObject({ seq: 2n, resignedControl: [K(1)], resignedAdmission: [] });
+    // The resigned key counts as not listed, so a witness alone does not re-list it.
+    const witnessed = tx(3, [ev.update(G1, 1, new Map([[1, kb(hashOf(one3))]]))], [K(2), K(3)], [K(1)], [one3]);
+    expect(reasons([...base, witnessed])[2]).toBe('key new to its role did not sign explicitly');
+    const join = tx(4, [ev.join(G1, 'key', M)], [M]);
+    const after = [...base, relist, regIn(keyCred(M), T(0x40), 3, 1), join];
+    expect(reasons([...after, tx(5, [ev.approve(ref(T(4), 0))], [K(1)])])[4]).toBeNull();
+    expect(reasons([...after, tx(5, [ev.update(G1, 2, new Map())], [K(1)])])[4]).toBe('control policy not satisfied');
+  });
+
+  it('a key not listed in any role, or resigned from every role that lists it, cannot resign', () => {
+    expect(reasons([base[0]!, tx(2, [ev.resign(G1, K(9))], [K(9)])])).toEqual([null, 'key not listed in any role']);
+    expect(reasons([...base, tx(3, [ev.resign(G1, K(1))], [K(1)])])[2]).toBe('key not listed in any role');
+  });
+
+  it('a key listed again in one role can resign from it again', () => {
+    const relist = tx(3, [ev.update(G1, 1, new Map([[1, kb(hashOf(one3))]]))], [K(2), K(1), K(3)], [], [one3]);
+    const again = [...base, relist, tx(4, [ev.resign(G1, K(1))], [K(1)])];
+    expect(reasons(again)).toEqual([null, null, null, null]);
+    expect(group(again)).toMatchObject({ seq: 3n, resignedControl: [K(1)], resignedAdmission: [K(1)] });
+  });
+
+  it('a resign needs the explicit signature of the key', () => {
+    expect(reasons([base[0]!, tx(2, [ev.resign(G1, K(1))], [], [K(1)])])).toEqual([null, 'resigning key did not sign explicitly']);
+  });
+
+  it('events of one transaction apply in order', () => {
+    const solo = tx(1, [ev.create(0, hashOf(k1), null)], [K(1)], [], [k1]);
+    const frozen = [solo, tx(2, [ev.resign(G1, K(1)), ev.dissolve(G1, 1)], [K(1)])];
+    expect(reasons(frozen)).toEqual([null, null, 'control policy not satisfied']);
+    expect(group(frozen)).toMatchObject({ status: 'active', seq: 1n, resignedControl: [K(1)] });
+    const gone = [solo, tx(2, [ev.dissolve(G1, 0), ev.resign(G1, K(1))], [K(1)])];
+    expect(reasons(gone)).toEqual([null, null, 'group dissolved']);
+    expect(group(gone)).toMatchObject({ status: 'dissolved', resignedControl: [] });
+    const three = nOfK(2, k1, sig(K(2)), k3);
+    const multi = tx(1, [ev.create(0, hashOf(three), null)], [K(1), K(2), K(3)], [], [three]);
+    expect(reasons([multi, tx(2, [ev.resign(G1, K(1)), ev.update(G1, 0, new Map())], [K(1), K(2), K(3)])]))
+      .toEqual([null, null, 'stale seq']);
+  });
+
+  it('a resign makes a control transaction signed before it stale', () => {
+    const three = nOfK(2, k1, sig(K(2)), k3);
+    const multi = tx(1, [ev.create(0, hashOf(three), null)], [K(1), K(2), K(3)], [], [three]);
+    expect(reasons([multi, tx(2, [ev.resign(G1, K(1))], [K(1)]), tx(3, [ev.update(G1, 0, new Map())], [K(2), K(3)])]))
+      .toEqual([null, null, 'stale seq']);
+  });
+});
+
+describe('policies that need no signature', () => {
+  const reasons = (inputs: Parameters<typeof replay>[0]) => replay(inputs).verdicts.map((v) => v.reason);
+  const k1 = sig(K(1));
+  it('a create with a signature-free control policy is invalid', () => {
+    const free = allOf();
+    const tx = txIn({ hash: T(1), h: 10, rs: [], payload: buildPayload([ev.create(0, hashOf(free), null)], [free]) });
+    expect(reasons([tx])).toEqual(['control policy needs no signature']);
+  });
+  it('an update to a signature-free admission policy is invalid', () => {
+    const free = [2, [[4, 0]]];
+    const create = txIn({ hash: T(1), h: 10, rs: [K(1)], payload: buildPayload([ev.create(1, hashOf(k1), hashOf(k1))], [k1]) });
+    const update = txIn({
+      hash: T(2), h: 11, rs: [K(1)],
+      payload: buildPayload([ev.update(ref(T(1), 0), 0, new Map([[1, kb(hashOf(free))]]))], [free]),
+    });
+    expect(reasons([create, update])).toEqual([null, 'admission policy needs no signature']);
   });
 });
 

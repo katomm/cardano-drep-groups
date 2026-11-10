@@ -13,6 +13,7 @@
 import { blake2b } from '@noble/hashes/blake2.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  Assets,
   Bytes,
   KeyHash,
   NativeScripts,
@@ -26,6 +27,7 @@ import {
   TransactionWitnessSet,
   VKey,
   Ed25519Signature,
+  type Address,
   type UTxO,
 } from '@evolution-sdk/evolution';
 import { runSchedule, type ScheduleStep } from '../../src/conformance/index.js';
@@ -35,7 +37,8 @@ import { credKey } from '../../src/state.js';
 import { arrayItemOffsets, itemEnd, mapEntryOffsets, readHead, readUint, skipTags } from '../../src/cborSpan.js';
 import { nativeScriptHash } from '../../src/hash.js';
 import {
-  chunkText, decodeTransaction, encodePayload, GROUPS_LABEL, inspectTransaction, majorityScript, replay,
+  chunkText, decodeTransaction, decodeTxRefs, encodePayload, GROUPS_LABEL, inspectTransaction, majorityScript,
+  nativeScriptFromScriptRef, replay,
   type Anchor, type ChainInput, type ChainTx, type Credential, type EventRef, type GroupEvent, type RegistryState,
 } from '../../src/index.js';
 import {
@@ -68,6 +71,10 @@ interface SendOptions {
   from?: bigint;
   to?: bigint;
   cert?: CertSpec;
+  /** An output to this address carrying the native script as its reference script. */
+  refScript?: { address: Address.Address; script: Uint8Array };
+  /** Reference inputs. */
+  readFrom?: UTxO.UTxO[];
 }
 
 interface Included {
@@ -146,6 +153,25 @@ describe('DRep groups on a devnet', () => {
   let genesisSpent = false;
   /** Every ledger input and transaction the chain holds, in the order seen. */
   const inputs: ChainInput[] = [];
+  /** The chain bytes of every included transaction by hash, to read the outputs later transactions spend or reference. */
+  const chainCbor = new Map<string, Uint8Array>();
+
+  /**
+   * The raw script_ref values on the outputs a transaction spends or references,
+   * resolved the documented way: decodeTxRefs of the producing transaction at the
+   * output index. An input without a producing transaction here (the genesis UTxO)
+   * carries no script.
+   */
+  const referenceScriptsOf = (cbor: Uint8Array): Uint8Array[] => {
+    const refs = decodeTxRefs(cbor);
+    const out: Uint8Array[] = [];
+    for (const i of [...refs.inputs, ...refs.referenceInputs]) {
+      const producer = chainCbor.get(i.txHash);
+      const scriptRef = producer === undefined ? null : decodeTxRefs(producer).outputScriptRefs[i.index];
+      if (scriptRef) out.push(scriptRef);
+    }
+    return out;
+  };
 
   const dev = () => {
     if (!devnet) throw new Error('Devnet not started.');
@@ -235,6 +261,7 @@ describe('DRep groups on a devnet', () => {
     });
     const chain = decodeTransaction(entry.cbor, { txHash: id, blockHeight: entry.blockHeight, txIndex: entry.txIndex });
     expect(chain.isValid).toBe(true);
+    chainCbor.set(id, entry.cbor);
     if (payload) expect(Bytes.toHex(chain.payload ?? new Uint8Array()), `${label}: payload read back`).toBe(Bytes.toHex(payload));
     if (cert) {
       for (const c of drepCerts(entry.cbor)) {
@@ -242,7 +269,10 @@ describe('DRep groups on a devnet', () => {
           kind: 'ledger',
           input: {
             kind: c.kind, credential: c.credential, txHash: id, blockHeight: entry.blockHeight, txIndex: entry.txIndex,
-            certIndex: c.certIndex, ...(c.kind === 'reg' && c.credential.kind === 'script' ? { witnessScripts: chain.witnessScripts } : {}),
+            certIndex: c.certIndex,
+            ...(c.kind === 'reg' && c.credential.kind === 'script'
+              ? { witnessScripts: chain.witnessScripts, referenceScripts: referenceScriptsOf(entry.cbor) }
+              : {}),
           },
         });
       }
@@ -261,6 +291,12 @@ describe('DRep groups on a devnet', () => {
       txb = txb.attachMetadata({ label: BigInt(GROUPS_LABEL), metadata: TransactionMetadatum.fromCBORBytes(o.payload) });
     }
     for (const k of listed) txb = txb.addSigner({ keyHash: KeyHash.fromHex(k.hash) });
+    if (o.refScript) {
+      txb = txb.payToAddress({
+        address: o.refScript.address, assets: Assets.fromLovelace(20_000_000n), script: NativeScripts.fromCBORBytes(o.refScript.script),
+      });
+    }
+    if (o.readFrom) txb = txb.readFrom({ referenceInputs: o.readFrom });
     if (o.from !== undefined || o.to !== undefined) {
       txb = txb.setValidity({
         ...(o.from !== undefined ? { from: slotUnix(o.from) } : {}),
@@ -387,9 +423,9 @@ describe('DRep groups on a devnet', () => {
     const payload = buildPayload([ev.create(0, hashOf(control1), null)]);
     const tx = await mustInclude('create 2 of 3 signed', { payload, listed: [P0, P1] });
     expect(new Set(tx.chain.witnessKeyHashes)).toEqual(new Set([P0.hash, P1.hash]));
-    expect(verdict(tx.hash, 0)).toMatchObject({ tag: 'create', valid: false, reason: 'listed key did not sign' });
+    expect(verdict(tx.hash, 0)).toMatchObject({ tag: 'create', valid: false, reason: 'listed key did not sign explicitly' });
     expect(group({ txHash: tx.hash, index: 0 })).toBeUndefined();
-    note('S2 accepted by the ledger, library verdict "listed key did not sign"');
+    note('S2 accepted by the ledger, library verdict "listed key did not sign explicitly"');
     await checkEngine();
   });
 
@@ -429,9 +465,9 @@ describe('DRep groups on a devnet', () => {
     }
     expect(r.chain.requiredSigners).toEqual([P1.hash]);
     expect(r.chain.witnessKeyHashes).toContain(P2.hash);
-    expect(verdict(r.hash, 0)).toMatchObject({ tag: 'create', valid: true, reason: null });
-    expect(group({ txHash: r.hash, index: 0 })).toMatchObject({ control: hashOf(control), status: 'active' });
-    note('S4 accepted: the ledger takes a vkey witness of a key that is in neither required_signers nor any input, the library counts it (union signer set)');
+    expect(verdict(r.hash, 0)).toMatchObject({ tag: 'create', valid: false, reason: 'listed key did not sign explicitly' });
+    expect(group({ txHash: r.hash, index: 0 })).toBeUndefined();
+    note('S4 accepted: the ledger takes a vkey witness of a key that is in neither required_signers nor any input, the library counts it for the policy but not as consent');
     await checkEngine();
   });
 
@@ -519,26 +555,26 @@ describe('DRep groups on a devnet', () => {
     const lockAfter = allOf(sig(P0.hash), after(Number(s)));
     const createAfter = buildPayload([ev.create(0, hashOf(lockAfter), null)], [lockAfter]);
 
-    const atS = await mustInclude('after: invalid_before = S', { payload: createAfter, from: s });
+    const atS = await mustInclude('after: invalid_before = S', { payload: createAfter, from: s, listed: [P0] });
     expect(atS.chain.invalidBefore).toBe(s);
     expect(verdict(atS.hash, 0)).toMatchObject({ valid: true });
-    const noStart = await mustInclude('after: no validity start', { payload: createAfter });
+    const noStart = await mustInclude('after: no validity start', { payload: createAfter, listed: [P0] });
     expect(noStart.chain.invalidBefore).toBeNull();
     expect(verdict(noStart.hash, 0)).toMatchObject({ valid: false, reason: 'control policy not satisfied' });
-    const early = await mustInclude('after: invalid_before = S - 1', { payload: createAfter, from: s - 1n });
+    const early = await mustInclude('after: invalid_before = S - 1', { payload: createAfter, from: s - 1n, listed: [P0] });
     expect(early.chain.invalidBefore).toBe(s - 1n);
     expect(verdict(early.hash, 0)).toMatchObject({ valid: false, reason: 'control policy not satisfied' });
 
     const t = (await currentSlot()) + 3000n; // one minute ahead at 20 ms slots
     const lockBefore = allOf(sig(P0.hash), before(Number(t)));
     const createBefore = buildPayload([ev.create(0, hashOf(lockBefore), null)], [lockBefore]);
-    const atT = await mustInclude('before: invalid_hereafter = T', { payload: createBefore, to: t });
+    const atT = await mustInclude('before: invalid_hereafter = T', { payload: createBefore, to: t, listed: [P0] });
     expect(atT.chain.invalidHereafter).toBe(t);
     expect(verdict(atT.hash, 0)).toMatchObject({ valid: true });
-    const late = await mustInclude('before: invalid_hereafter = T + 1', { payload: createBefore, to: t + 1n });
+    const late = await mustInclude('before: invalid_hereafter = T + 1', { payload: createBefore, to: t + 1n, listed: [P0] });
     expect(late.chain.invalidHereafter).toBe(t + 1n);
     expect(verdict(late.hash, 0)).toMatchObject({ valid: false, reason: 'control policy not satisfied' });
-    const noEnd = await mustInclude('before: no ttl', { payload: createBefore });
+    const noEnd = await mustInclude('before: no ttl', { payload: createBefore, listed: [P0] });
     expect(noEnd.chain.invalidHereafter).toBeNull();
     expect(verdict(noEnd.hash, 0)).toMatchObject({ valid: false, reason: 'control policy not satisfied' });
     note(`S9 accepted all six: after ${s} valid only with invalid_before >= ${s}, before ${t} valid only with invalid_hereafter <= ${t}`);
@@ -578,6 +614,7 @@ describe('DRep groups on a devnet', () => {
     const built = await payer
       .newTx()
       .attachMetadata({ label: BigInt(GROUPS_LABEL), metadata: TransactionMetadatum.fromCBORBytes(placeholder) })
+      .addSigner({ keyHash: KeyHash.fromHex(P0.hash) })
       .build({ fullProtocolParameters: await paddedParams() });
     const unsignedBytes = Transaction.toCBORBytes(await built.toTransaction());
     const [bodyOff, , , auxOff] = arrayItemOffsets(unsignedBytes, 0) as [number, number, number, number];
@@ -699,7 +736,7 @@ describe('DRep groups on a devnet', () => {
     await checkEngine();
   });
 
-  it('13: approve plus update where the newly listed key did not sign', async () => {
+  it('13: approve plus update where a key new to its role did not sign', async () => {
     const join = await joinTx('join D2', group12, D2);
     const joinId = { txHash: join.hash, index: 0 };
     const three = majorityScript(hashes(P0, P1, P2), 3);
@@ -713,10 +750,10 @@ describe('DRep groups on a devnet', () => {
       }),
       listed: [P0, P1],
     });
-    expect(judged(combined.hash)).toEqual([good('approve'), bad('update', 'newly listed key did not sign')]);
+    expect(judged(combined.hash)).toEqual([good('approve'), bad('update', 'key new to its role did not sign explicitly')]);
     expect(instance(joinId)).toMatchObject({ state: 'active' });
     expect(group(group12)).toMatchObject({ control: majorityScript(hashes(P0, P1), 2).hash, seq: 1n });
-    note('S13 accepted by the ledger: approve valid, update "newly listed key did not sign"');
+    note('S13 accepted by the ledger: approve valid, update "key new to its role did not sign explicitly"');
     await checkEngine();
   });
 
@@ -880,6 +917,93 @@ describe('DRep groups on a devnet', () => {
     expect(instance(joinId)).toMatchObject({ state: 'closed', reason: 'left' });
     expect(state().scripts.has(member.hash)).toBe(false); // resolved through the reg_drep witness set
     note('S21 accepted: a 2 of 2 majority script DRep joins an open group and leaves, its script resolved from the reg_drep witness set');
+    await checkEngine();
+  });
+
+  it('22: a resign from a shared 1 of 2 policy, then the resigned key alone cannot update', async () => {
+    const shared = majorityScript(hashes(P1, P2), 1);
+    const create = await mustInclude('shared 1 of 2 create', {
+      payload: encodePayload({
+        events: [{ tag: 'create', mode: 'permissioned', control: shared.hash, admission: shared.hash, profile: null }],
+        scripts: [shared.script],
+      }),
+      listed: [P1, P2],
+    });
+    const g = { txHash: create.hash, index: 0 };
+    expect(judged(create.hash)).toEqual([good('create')]);
+
+    const resign = await mustInclude('resign P1', { payload: encodePayload({ events: [{ tag: 'resign', group: g, key: P1.hash }] }), listed: [P1] });
+    expect(judged(resign.hash)).toEqual([good('resign')]);
+    expect(group(g)).toMatchObject({ seq: 1n, resignedControl: [P1.hash], resignedAdmission: [P1.hash], status: 'active' });
+
+    const profile = anchorOf('https://example.org/group-22.jsonld', 'd4');
+    const update = encodePayload({ events: [{ tag: 'update', group: g, seq: 1n, changes: { profile } }] });
+    const byP1 = await mustInclude('update by resigned P1', { payload: update, listed: [P1] });
+    expect(byP1.chain.witnessKeyHashes).toContain(P1.hash);
+    expect(judged(byP1.hash)).toEqual([bad('update', 'control policy not satisfied')]);
+    expect(group(g)).toMatchObject({ seq: 1n, profile: null });
+    const byP2 = await mustInclude('update by P2', { payload: update, listed: [P2] });
+    expect(judged(byP2.hash)).toEqual([good('update')]);
+    expect(group(g)).toMatchObject({ seq: 2n, profile, resignedControl: [P1.hash], resignedAdmission: [P1.hash] });
+    note('S22 accepted: P1 resigns from a shared 1 of 2 policy, an update signed by P1 alone is "control policy not satisfied", one by P2 is valid');
+    await checkEngine();
+  });
+
+  it('23: resign plus dissolve by the only control key leaves a frozen group', async () => {
+    const solo = majorityScript(hashes(P1), 1);
+    const create = await mustInclude('solo P1 create', {
+      payload: encodePayload({
+        events: [{ tag: 'create', mode: 'open', control: solo.hash, admission: null, profile: null }],
+        scripts: [solo.script],
+      }),
+      listed: [P1],
+    });
+    const g = { txHash: create.hash, index: 0 };
+    const tx = await mustInclude('resign + dissolve', {
+      payload: encodePayload({ events: [{ tag: 'resign', group: g, key: P1.hash }, { tag: 'dissolve', group: g, seq: 1n }] }),
+      listed: [P1],
+    });
+    expect(judged(tx.hash)).toEqual([good('resign'), bad('dissolve', 'control policy not satisfied')]);
+    expect(group(g)).toMatchObject({ status: 'active', seq: 1n, resignedControl: [P1.hash], resignedAdmission: [] });
+    note('S23 accepted: [resign P1, dissolve] on a 1 of 1 group, the resign is valid, the dissolve "control policy not satisfied", the group stays active');
+    await checkEngine();
+  });
+
+  it('24: a script DRep registered through a reference script on a reference input joins an open group', async () => {
+    const member = majorityScript(hashes(P3, P5), 2);
+    const h = member.hash;
+    expect(Bytes.toHex(NativeScripts.toCBORBytes(NativeScripts.fromCBORBytes(member.bytes)))).toBe(Bytes.toHex(member.bytes));
+    // The reference script output goes to account 1, so the payer's coin selection never spends it.
+    const holder = await dev().client(1).address();
+    const refTx = await mustInclude('reference script output', { refScript: { address: holder, script: member.bytes } });
+    const outputIndex = decodeTxRefs(refTx.cbor).outputScriptRefs.findIndex((r) => r !== null);
+    expect(outputIndex).toBeGreaterThanOrEqual(0);
+    const onChainScript = nativeScriptFromScriptRef(decodeTxRefs(refTx.cbor).outputScriptRefs[outputIndex]!);
+    expect(onChainScript && nativeScriptHash(onChainScript)).toBe(h);
+    const refUtxo = await dev().waitFor('the reference script output in Kupo', async () => {
+      const utxos = await payer.getUtxos(holder);
+      return utxos.find((u: UTxO.UTxO) => TransactionHash.toHex(u.transactionId) === refTx.hash && Number(u.index) === outputIndex) ?? null;
+    });
+
+    const cred: Credential = { kind: 'script', hash: h };
+    const reg = await mustInclude('reg_drep through a reference script', {
+      cert: { kind: 'regDrep', credential: cred }, readFrom: [refUtxo], unlisted: [P3, P5],
+    });
+    expect(reg.chain.witnessScripts).toEqual([]);
+    const refs = decodeTxRefs(reg.cbor);
+    expect(refs.referenceInputs).toContainEqual({ txHash: refTx.hash, index: outputIndex });
+    expect(refs.inputs).not.toContainEqual({ txHash: refTx.hash, index: outputIndex });
+    const regInput = inputs.find((x) => x.kind === 'ledger' && x.input.txHash === reg.hash);
+    expect(regInput?.kind === 'ledger' && regInput.input.referenceScripts?.map((r) => nativeScriptFromScriptRef(r))).toEqual([member.bytes]);
+
+    const join = await mustInclude('reference script join', {
+      payload: encodePayload({ events: [{ tag: 'join', group: group17, member: cred }] }),
+      listed: [P3, P5],
+    });
+    expect(judged(join.hash)).toEqual([good('join')]);
+    expect(instance({ txHash: join.hash, index: 0 })).toMatchObject({ state: 'active', member: cred });
+    expect(state().scripts.has(h)).toBe(false); // resolved through the reference script, not key 2
+    note('S24 accepted: reg_drep of a native script credential whose script is only a reference script on a reference input, the join resolves it through decodeTxRefs of the producing transaction and is valid');
     await checkEngine();
   });
 });

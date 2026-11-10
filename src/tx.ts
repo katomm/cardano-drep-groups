@@ -2,7 +2,7 @@ import { arrayItemOffsets, itemEnd, mapEntryOffsets, readHead, readUint, skipTag
 import { keyHashOfVkey } from './hash.js';
 import { bytesToHex } from './hex.js';
 import { GROUPS_LABEL } from './payload.js';
-import type { ChainTx, TxPosition } from './types.js';
+import type { ChainTx, Hex, TxPosition } from './types.js';
 
 // The transaction is read by span with an explicit stack, so deep values in
 // fields this library does not interpret (other metadata labels, Plutus data)
@@ -122,5 +122,54 @@ export function decodeTransaction(cbor: Uint8Array, pos: TxPosition): ChainTx {
     payload,
     payloadRepeated: repeated,
     witnessScripts,
+  };
+}
+
+// A transaction input: the hash of the producing transaction and the output index.
+export interface TxIn { txHash: Hex; index: number }
+
+// Inputs [tx_hash, index] of a set or a plain array. Malformed entries are skipped.
+function txIns(b: Uint8Array, off: number | undefined): TxIn[] {
+  if (off === undefined) return [];
+  return setItems(b, off).flatMap((o) => {
+    if (readHead(b, o).major !== 4) return [];
+    const [h, i] = arrayItemOffsets(b, o);
+    const hash = h === undefined ? null : bytesAt(b, h);
+    const index = i === undefined ? null : readUint(b, i);
+    return hash && hash.length === 32 && index !== null ? [{ txHash: bytesToHex(hash), index }] : [];
+  });
+}
+
+// The raw script_ref of an output: the value of key 3 of a post-Alonzo map output, tag 24
+// included and cut out of the original bytes. A legacy array output carries none.
+function outputScriptRef(b: Uint8Array, off: number): Uint8Array | null {
+  const p = skipTags(b, off);
+  if (readHead(b, p).major !== 5) return null;
+  const v = uintKeyed(b, p).get(3);
+  return v === undefined ? null : b.slice(v, itemEnd(b, v));
+}
+
+// The inputs (body key 0), reference inputs (body key 18) and the script_ref of every
+// output (body key 1, index aligned, null without one) of a transaction. A collateral
+// return (body key 16) follows at index outputs.length, the index the ledger gives it
+// when a phase-2 invalid transaction creates it. Accepts the pre-Alonzo envelope
+// [body, witnesses, aux] too, since an indexer reads the producing transactions of old
+// outputs. Throws on a Byron-era transaction, which an indexer treats as "no script"
+// since Byron outputs cannot carry scripts. The script of an input is
+// decodeTxRefs(producing tx).outputScriptRefs[input.index], never any other output.
+export function decodeTxRefs(cbor: Uint8Array): { inputs: TxIn[]; referenceInputs: TxIn[]; outputScriptRefs: (Uint8Array | null)[] } {
+  if (itemEnd(cbor, 0) !== cbor.length) throw new Error('tx: trailing bytes');
+  const top = readHead(cbor, 0).major === 4 ? arrayItemOffsets(cbor, 0) : [];
+  if (top.length !== 3 && top.length !== 4) throw new Error('tx: expected a transaction envelope');
+  const bodyOff = skipTags(cbor, top[0] as number);
+  if (readHead(cbor, bodyOff).major !== 5) throw new Error('tx: malformed');
+  const body = uintKeyed(cbor, bodyOff);
+  const outputsOff = body.get(1);
+  const outputs = outputsOff !== undefined && readHead(cbor, outputsOff).major === 4 ? arrayItemOffsets(cbor, outputsOff) : [];
+  const collateralOff = body.get(16);
+  return {
+    inputs: txIns(cbor, body.get(0)),
+    referenceInputs: txIns(cbor, body.get(18)),
+    outputScriptRefs: [...outputs, ...(collateralOff === undefined ? [] : [collateralOff])].map((o) => outputScriptRef(cbor, o)),
   };
 }

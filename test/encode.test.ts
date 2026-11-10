@@ -38,6 +38,8 @@ const ALL_EVENTS: GroupEvent[] = [
   { tag: 'approve', join: ref },
   { tag: 'leave', join: { local: 0 } },
   { tag: 'remove', join: ref },
+  { tag: 'resign', group: ref, key: K(6) },
+  { tag: 'resign', group: { local: 0 }, key: K(6) },
 ];
 
 describe('encodePayload', () => {
@@ -102,7 +104,7 @@ describe('encodePayload', () => {
         compared++;
       }
     }
-    expect(compared).toBe(64);
+    expect(compared).toBe(107);
     expect([...new Set(skipped)]).toEqual([
       'founder joins through a local ref, local refs to the same or a later index fail',
       'phase-2-invalid transaction, wrong version and duplicate map key are ignored',

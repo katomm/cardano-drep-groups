@@ -44,6 +44,7 @@ export function applyControl(
   const context = txContextOf(tx);
   own.txContexts.push({ txHash: tx.txHash, context });
   const ctx: EvalContext = { signers: new Set(context.signers), invalidBefore: tx.invalidBefore, invalidHereafter: tx.invalidHereafter };
+  const required = new Set(context.requiredSigners);
 
   for (const r of routed.events) {
     if (r.plane === 'orphan') {
@@ -57,7 +58,7 @@ export function applyControl(
       own.queued.push({ subject: r.subject as NonNullable<typeof r.subject>, at: r.at, group: r.group, txHash: tx.txHash, event: r.decoded });
       continue;
     }
-    const res = controlRule(world, e, r.ref, ctx, r.at);
+    const res = controlRule(world, e, r.ref, ctx, required, r.at);
     for (const w of res.writes) if (w.kind === 'version') own.versions.push(w.version);
     const valid = res.reason === null;
     results.push({ ref: r.ref, tag: e.tag, valid, reason: res.reason });

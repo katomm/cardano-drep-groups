@@ -1,9 +1,12 @@
 import { encode } from 'cborg';
 import { describe, expect, it } from 'vitest';
-import { hexToBytes } from '../src/hex.js';
-import { collectKeyHashes, evaluateNativeScript, memberScriptWitness, parseNativeScript } from '../src/nativeScript.js';
+import { nativeScriptHash } from '../src/hash.js';
+import { bytesToHex, concatBytes, hexToBytes } from '../src/hex.js';
+import {
+  collectKeyHashes, evaluateNativeScript, memberScriptWitness, nativeScriptFromScriptRef, parseNativeScript, satisfiableWithoutSignature,
+} from '../src/nativeScript.js';
 import type { EvalContext, NativeScript } from '../src/types.js';
-import { after, allOf, anyOf, before, hashOf, K, keyCred, nOfK, scriptBytes, scriptCred, sig } from './helpers.js';
+import { after, allOf, anyOf, before, hashOf, K, keyCred, nOfK, scriptBytes, scriptCred, scriptRefOf, sig } from './helpers.js';
 
 const ctx = (signers: string[], ib: bigint | null = null, ih: bigint | null = null): EvalContext => ({
   signers: new Set(signers),
@@ -173,5 +176,82 @@ describe('memberScriptWitness', () => {
     expect(memberScriptWitness(keyCred(hashOf(member)), [scriptBytes(member)])).toBeNull();
     const bad = scriptBytes([9, 1] as never);
     expect(memberScriptWitness(scriptCred(hashOf([9, 1] as never)), [bad])).toBeNull();
+  });
+
+  it('finds a script that only a reference script carries', () => {
+    const want = { script: parse(member), bytes: scriptBytes(member) };
+    expect(memberScriptWitness(c, undefined, [scriptRefOf(0, scriptBytes(member))])).toEqual(want);
+    expect(memberScriptWitness(c, [scriptBytes(sig(K(3)))], [scriptRefOf(0, scriptBytes(sig(K(4)))), scriptRefOf(0, scriptBytes(member))])).toEqual(want);
+  });
+
+  it('resolves nothing from a Plutus reference script or a reference script of another hash', () => {
+    expect(memberScriptWitness(c, [], [scriptRefOf(2, scriptBytes(member))])).toBeNull();
+    expect(memberScriptWitness(c, [], [scriptRefOf(0, scriptBytes(sig(K(3))))])).toBeNull();
+    expect(memberScriptWitness(keyCred(hashOf(member)), [], [scriptRefOf(0, scriptBytes(member))])).toBeNull();
+  });
+});
+
+describe('nativeScriptFromScriptRef', () => {
+  const member = allOf(sig(K(1)), sig(K(2)));
+
+  it('returns the exact inner span of a native script reference, which hashes like the plain script', () => {
+    const got = nativeScriptFromScriptRef(scriptRefOf(0, scriptBytes(member)));
+    expect(got && bytesToHex(got)).toBe(bytesToHex(scriptBytes(member)));
+    expect(nativeScriptHash(got as Uint8Array)).toBe(hashOf(member));
+  });
+
+  it('keeps a non-canonical encoding as it is, never re-encoded', () => {
+    // [1, []] with the type 1 written in the two byte form 18 01
+    const odd = hexToBytes('821801' + '80');
+    const got = nativeScriptFromScriptRef(scriptRefOf(0, odd));
+    expect(got && bytesToHex(got)).toBe('82180180');
+  });
+
+  it('reads an indefinite [language, script] pair like a definite one', () => {
+    const inner = concatBytes([hexToBytes('9f00'), scriptBytes(member), hexToBytes('ff')]);
+    const got = nativeScriptFromScriptRef(concatBytes([hexToBytes('d818'), encode(inner)]));
+    expect(got && bytesToHex(got)).toBe(bytesToHex(scriptBytes(member)));
+    const three = concatBytes([hexToBytes('9f00'), scriptBytes(member), hexToBytes('01ff')]);
+    expect(nativeScriptFromScriptRef(concatBytes([hexToBytes('d818'), encode(three)]))).toBeNull();
+  });
+
+  it('gives null for a Plutus script, a missing or other tag and malformed bytes', () => {
+    const inner = concatBytes([hexToBytes('8200'), scriptBytes(member)]);
+    const plain = scriptRefOf(0, scriptBytes(member));
+    expect(nativeScriptFromScriptRef(scriptRefOf(1, scriptBytes(member)))).toBeNull();
+    expect(nativeScriptFromScriptRef(scriptRefOf(2, scriptBytes(member)))).toBeNull();
+    expect(nativeScriptFromScriptRef(scriptRefOf(3, scriptBytes(member)))).toBeNull();
+    expect(nativeScriptFromScriptRef(encode(inner))).toBeNull(); // byte string without tag 24
+    expect(nativeScriptFromScriptRef(inner)).toBeNull(); // [0, script] without any wrapping
+    expect(nativeScriptFromScriptRef(concatBytes([hexToBytes('d819'), encode(inner)]))).toBeNull(); // tag 25
+    expect(nativeScriptFromScriptRef(concatBytes([hexToBytes('d818d818'), encode(encode(inner))]))).toBeNull(); // tag 24 twice
+    expect(nativeScriptFromScriptRef(concatBytes([plain, hexToBytes('00')]))).toBeNull(); // trailing byte
+    expect(nativeScriptFromScriptRef(plain.subarray(0, plain.length - 1))).toBeNull(); // truncated
+    expect(nativeScriptFromScriptRef(concatBytes([hexToBytes('d818'), encode(concatBytes([inner, hexToBytes('00')]))]))).toBeNull(); // trailing inside
+    expect(nativeScriptFromScriptRef(concatBytes([hexToBytes('d818'), encode(encode([0, scriptBytes(member), 1]))]))).toBeNull(); // three items
+    expect(nativeScriptFromScriptRef(concatBytes([hexToBytes('d818'), encode(encode([0]))]))).toBeNull();
+    expect(nativeScriptFromScriptRef(concatBytes([hexToBytes('d818'), encode(encode(new Map([[0, 1]])))]))).toBeNull();
+    expect(nativeScriptFromScriptRef(new Uint8Array())).toBeNull();
+  });
+});
+
+describe('satisfiableWithoutSignature', () => {
+  const free = (v: unknown[]) => satisfiableWithoutSignature(parse(v));
+  it('is true when no signature is needed', () => {
+    expect(free(allOf())).toBe(true);
+    expect(free(nOfK(0))).toBe(true);
+    expect(free([3, -1, [sig(K(1))]])).toBe(true);
+    expect(free(anyOf(after(0)))).toBe(true);
+    expect(free(allOf(after(5), before(9)))).toBe(true);
+    // Overestimates on purpose: conflicting time locks that nothing can satisfy still count.
+    expect(free(allOf(after(10), before(5)))).toBe(true);
+    expect(free(nOfK(1, sig(K(1)), before(3)))).toBe(true);
+  });
+  it('is false when a signature is always needed', () => {
+    expect(free(sig(K(1)))).toBe(false);
+    expect(free(anyOf())).toBe(false);
+    expect(free(nOfK(3, sig(K(1)), sig(K(2))))).toBe(false);
+    expect(free(allOf(sig(K(1)), after(5)))).toBe(false);
+    expect(free(nOfK(2, sig(K(1)), after(1)))).toBe(false);
   });
 });

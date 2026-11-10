@@ -53,7 +53,7 @@ const ctl = hashOf(CTL);
 const M = K(0x21);
 const m = keyCred(M);
 const create = (tx: number, h: number, mode: 0 | 1): ChainInput =>
-  txIn({ hash: T(tx), h, wk: [A], payload: buildPayload([ev.create(mode, ctl, mode === 1 ? ctl : null)], [CTL]) });
+  txIn({ hash: T(tx), h, rs: [A], payload: buildPayload([ev.create(mode, ctl, mode === 1 ? ctl : null)], [CTL]) });
 const regM = (h: number): ChainInput => regIn(m, T(0xe0), h);
 
 describe('previewTransaction', () => {
@@ -119,7 +119,7 @@ describe('previewTransaction', () => {
     const { store } = await storeOf([create(1, 1, 1), regM(2), join]);
     const NEW = allOf(sig(A), sig(M));
     const payload = buildPayload([ev.approve(ref(T(2), 0)), ev.update(ref(T(1), 0), 0, new Map([[0, kb(hashOf(NEW))]]))], [NEW]);
-    const signed = chainTx({ hash: T(3), h: 4, wk: [A, M], payload });
+    const signed = chainTx({ hash: T(3), h: 4, rs: [M], wk: [A], payload });
     expect(eventsOf(await previewTransaction(depsOf(store), signed))).toEqual([
       { index: 0, tag: 'approve', valid: true, reason: null },
       { index: 1, tag: 'update', valid: true, reason: null },
@@ -127,14 +127,14 @@ describe('previewTransaction', () => {
     const unsigned = chainTx({ hash: T(3), h: 4, wk: [A], payload });
     expect(eventsOf(await previewTransaction(depsOf(store), unsigned))).toEqual([
       { index: 0, tag: 'approve', valid: true, reason: null },
-      { index: 1, tag: 'update', valid: false, reason: 'newly listed key did not sign' },
+      { index: 1, tag: 'update', valid: false, reason: 'key new to its role did not sign explicitly' },
     ]);
   });
 
   it('reports decode failures and orphans at their index', async () => {
     const { store } = await storeOf([]);
     const payload = buildPayload([ev.create(0, ctl, null), [99], ev.approve(ref(T(0x77), 0))], [CTL]);
-    const events = eventsOf(await previewTransaction(depsOf(store), chainTx({ hash: T(1), h: 1, wk: [A], payload })));
+    const events = eventsOf(await previewTransaction(depsOf(store), chainTx({ hash: T(1), h: 1, rs: [A], payload })));
     expect(events.map((e) => e.index)).toEqual([0, 1, 2]);
     expect(events[0]).toEqual({ index: 0, tag: 'create', valid: true, reason: null });
     expect(events[1]).toMatchObject({ index: 1, tag: null, valid: false });
