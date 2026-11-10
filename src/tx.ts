@@ -150,9 +150,12 @@ function outputScriptRef(b: Uint8Array, off: number): Uint8Array | null {
 }
 
 // The inputs (body key 0), reference inputs (body key 18) and the script_ref of every
-// output (body key 1, index aligned, null without one) of a transaction. Accepts the
-// pre-Alonzo envelope [body, witnesses, aux] too, since an indexer reads the producing
-// transactions of old outputs. The script of an input is
+// output (body key 1, index aligned, null without one) of a transaction. A collateral
+// return (body key 16) follows at index outputs.length, the index the ledger gives it
+// when a phase-2 invalid transaction creates it. Accepts the pre-Alonzo envelope
+// [body, witnesses, aux] too, since an indexer reads the producing transactions of old
+// outputs. Throws on a Byron-era transaction, which an indexer treats as "no script"
+// since Byron outputs cannot carry scripts. The script of an input is
 // decodeTxRefs(producing tx).outputScriptRefs[input.index], never any other output.
 export function decodeTxRefs(cbor: Uint8Array): { inputs: TxIn[]; referenceInputs: TxIn[]; outputScriptRefs: (Uint8Array | null)[] } {
   if (itemEnd(cbor, 0) !== cbor.length) throw new Error('tx: trailing bytes');
@@ -163,9 +166,10 @@ export function decodeTxRefs(cbor: Uint8Array): { inputs: TxIn[]; referenceInput
   const body = uintKeyed(cbor, bodyOff);
   const outputsOff = body.get(1);
   const outputs = outputsOff !== undefined && readHead(cbor, outputsOff).major === 4 ? arrayItemOffsets(cbor, outputsOff) : [];
+  const collateralOff = body.get(16);
   return {
     inputs: txIns(cbor, body.get(0)),
     referenceInputs: txIns(cbor, body.get(18)),
-    outputScriptRefs: outputs.map((o) => outputScriptRef(cbor, o)),
+    outputScriptRefs: [...outputs, ...(collateralOff === undefined ? [] : [collateralOff])].map((o) => outputScriptRef(cbor, o)),
   };
 }

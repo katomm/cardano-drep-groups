@@ -200,6 +200,18 @@ describe('replay with reference scripts found through decodeTxRefs', () => {
     expect(verdict).toMatchObject({ valid: true, reason: null });
   });
 
+  it('accepts the join when the registration spends the collateral return carrying the script', () => {
+    // A phase-2 invalid producer with outputs [o0] creates only its collateral return, (Q, 1).
+    const Q = T(0x53);
+    const ret = new Map<number, unknown>([[0, hexToBytes(`61${'11'.repeat(28)}`)], [1, 2_000_000], [3, new Tagged(24, nativeContent(ms))]]);
+    const body = new Map<number, unknown>([[0, [[hexToBytes(T(0x54)), 0]]], [1, [[hexToBytes(`61${'11'.repeat(28)}`), 1_000_000]]], [2, 0], [16, ret]]);
+    const withQ = new Map([...producers, [Q, encode([body, new Map(), false, null])]]);
+    expect(decodeTxRefs(withQ.get(Q) as Uint8Array).outputScriptRefs.map((x) => (x ? bytesToHex(x) : null))).toEqual([null, bytesToHex(scriptRefOf(0, scriptBytes(ms)))]);
+    const refs = referenceScriptsOf(evoTx({ inputs: [{ txHash: Q, index: 1 }], outputs: [evoOut()] }), withQ);
+    expect(refs).toHaveLength(1);
+    expect(replay([regIn(scriptCred(SC), T(0x40), 5, 0, undefined, refs), create, join]).verdicts[1]).toMatchObject({ valid: true, reason: null });
+  });
+
   it('rejects the join when the script sits on another output of the producing transaction', () => {
     const { refs, verdict } = run(evoTx({ inputs: [{ txHash: P, index: 1 }], outputs: [evoOut()] }));
     expect(refs).toEqual([]);
