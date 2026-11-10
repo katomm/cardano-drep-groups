@@ -86,6 +86,9 @@ const depth9 = [1, 2, 3, 4, 5, 6, 7, 8].reduce((x) => allOf(x), sig(K(1)));
 const admK4 = nOfK(1, sig(K(1)), sig(K(4)));
 const ctrlK4 = nOfK(2, sig(K(1)), sig(K(2)), sig(K(4)));
 const lockC = anyOf(sig(K(1)), after(100));
+// The check overestimates on purpose: a script only conflicting time locks could satisfy counts as signature-free.
+const lockD = allOf(after(10), before(5));
+const adm3 = nOfK(1, sig(K(1)), sig(K(3)));
 const adm2 = nOfK(1, sig(K(2)), sig(K(4)));
 const GP = (tx: string, o: Partial<GroupExpect> = {}): GroupExpect => G(tx, { mode: 'permissioned', admission: A, ...o });
 const permCreateAt = (hash: string, h: number) => txIn({ hash, h, payload: buildPayload([ev.create(1, C, A)], [ctrl, adm]), rs: ALL });
@@ -475,6 +478,7 @@ export const VECTORS: VectorDef[] = [
       permCreateAt(T(3), 12),
       updateOn(T(3), T(4), 13, 0, new Map([[0, kb(hashOf(lockC))]]), [K(1), K(2)], [lockC]),
       updateOn(T(3), T(5), 14, 0, new Map([[1, kb(hashOf(lockC))]]), [K(1), K(2)], [lockC]),
+      txIn({ hash: T(6), h: 15, payload: buildPayload([ev.create(1, C, hashOf(lockD))], [ctrl, lockD]), rs: ALL }),
     ],
     expect: {
       groups: [GP(T(3))],
@@ -485,6 +489,7 @@ export const VECTORS: VectorDef[] = [
         V(T(3), true),
         V(T(4), false, 'control policy needs no signature'),
         V(T(5), false, 'admission policy needs no signature'),
+        V(T(6), false, 'admission policy needs no signature'),
       ],
     },
   },
@@ -568,6 +573,33 @@ export const VECTORS: VectorDef[] = [
     },
   },
   {
+    name: 're-listing a resigned key without its signature',
+    inputs: [
+      txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(1, A, A)], [adm]), rs: [K(1), K(2)] }),
+      resignTx(T(2), 11, K(1), [K(1)]),
+      updateOn(T(1), T(3), 12, 1, new Map([[1, kb(hashOf(adm3))]]), [K(2), K(3)], [adm3]),
+    ],
+    expect: {
+      groups: [GP(T(1), { seq: '1', control: A, admission: A, resignedControl: [K(1)], resignedAdmission: [K(1)] })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), true), V(T(3), false, 'key new to its role did not sign explicitly')],
+    },
+  },
+  {
+    name: 're-listing a resigned key with its signature',
+    inputs: [
+      txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(1, A, A)], [adm]), rs: [K(1), K(2)] }),
+      resignTx(T(2), 11, K(1), [K(1)]),
+      updateOn(T(1), T(3), 12, 1, new Map([[1, kb(hashOf(adm3))]]), [K(2), K(1), K(3)], [adm3]),
+      resignTx(T(4), 13, K(1), [K(1)]),
+    ],
+    expect: {
+      groups: [GP(T(1), { seq: '3', control: A, admission: hashOf(adm3), resignedControl: [K(1)], resignedAdmission: [K(1)] })],
+      instances: [],
+      verdicts: [V(T(1), true), V(T(2), true), V(T(3), true), V(T(4), true)],
+    },
+  },
+  {
     name: 'member script from a reference script',
     inputs: [regIn(scriptCred(msRef), T(0x43), 6, 0, undefined, [scriptRefOf(0, scriptBytes(ms))]), openCreate(), refMemberJoin],
     expect: {
@@ -577,6 +609,7 @@ export const VECTORS: VectorDef[] = [
     },
   },
   {
+    // Native script content under language 2 on purpose: only the language tag decides, so it must resolve nothing.
     name: 'plutus reference script resolves nothing',
     inputs: [regIn(scriptCred(msRef), T(0x43), 6, 0, undefined, [scriptRefOf(2, scriptBytes(ms))]), openCreate(), refMemberJoin],
     expect: { groups: [G(T(1))], instances: [], verdicts: [V(T(1), true), V(T(2), false, 'member script unresolved')] },

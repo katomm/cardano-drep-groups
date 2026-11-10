@@ -10,7 +10,7 @@ const FILE = new URL('../vectors/vectors.json', import.meta.url);
 function serialize(defs: VectorDef[]): unknown {
   return {
     version: 1,
-    compare: 'groups (including the profile anchor URL and hash) and instances exactly, verdicts by ref and valid. reason texts are informative.',
+    compare: 'groups (including the profile anchor URL and hash) and instances exactly, verdicts by ref and valid. reason texts are informative. groups carry resignedControl and resignedAdmission (sorted lowercase hex key hashes). a ledger input may carry referenceScriptsHex, the raw script_ref values (tag 24 around [language, script]) of the outputs that the registration transaction spends or uses as reference inputs, listed in output index order, absent when empty. only native ones resolve a member script.',
     vectors: defs.map((d) => ({
       name: d.name,
       inputs: d.inputs.map((x) =>

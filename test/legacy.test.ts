@@ -78,7 +78,6 @@ describe.skipIf(!dir)('legacy replay', () => {
       expect(actual.instances).toEqual(expected.instances);
       expect(actual.groups).toEqual(expected.groups);
       expect(actual).toEqual(expected);
-      console.log(`${name}: groups ${actual.groups.length}, instances ${actual.instances.length}, verdicts ${actual.verdicts.length}`);
     });
   }
 });

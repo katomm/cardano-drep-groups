@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "compare": "groups (including the profile anchor URL and hash) and instances exactly, verdicts by ref and valid. reason texts are informative.",
+  "compare": "groups (including the profile anchor URL and hash) and instances exactly, verdicts by ref and valid. reason texts are informative. groups carry resignedControl and resignedAdmission (sorted lowercase hex key hashes). a ledger input may carry referenceScriptsHex, the raw script_ref values (tag 24 around [language, script]) of the outputs that the registration transaction spends or uses as reference inputs, listed in output index order, absent when empty. only native ones resolve a member script.",
   "vectors": [
     {
       "name": "open group: create, join, leave",
@@ -3474,6 +3474,23 @@
           "witnessKeyHashes": [],
           "payloadHex": "a300010181840182582003030303030303030303030303030303030303030303030303030303030303030000a101581cc14f8cdfe63095e837e1f57f6b0291117bce5ea3a2078609cbd0ce4202818158278202828200581c0101010101010101010101010101010101010101010101010101010182041864",
           "witnessScriptsHex": []
+        },
+        {
+          "kind": "tx",
+          "txHash": "0606060606060606060606060606060606060606060606060606060606060606",
+          "blockHeight": 15,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840001581c4a227dfb5f2db51bfd369af3f8945194190e0f743bcd8c573d51db5c581cc0bd1cccd352854281efe1f81a5dcb4588ab283edd7970c0852266dc0282825840830302838200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202025824020202028200581c03030303030303030303030303030303030303030303030303030303814982018282040a820505",
+          "witnessScriptsHex": []
         }
       ],
       "expect": {
@@ -3515,6 +3532,11 @@
           },
           {
             "ref": "0505050505050505050505050505050505050505050505050505050505050505#0",
+            "valid": false,
+            "reason": "admission policy needs no signature"
+          },
+          {
+            "ref": "0606060606060606060606060606060606060606060606060606060606060606#0",
             "valid": false,
             "reason": "admission policy needs no signature"
           }
@@ -4195,6 +4217,207 @@
             "ref": "0303030303030303030303030303030303030303030303030303030303030303#0",
             "valid": false,
             "reason": "stale seq"
+          }
+        ]
+      }
+    },
+    {
+      "name": "re-listing a resigned key without its signature",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840001581c79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a7581c79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a70281825840830301828200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202024402020202",
+          "witnessScriptsHex": []
+        },
+        {
+          "kind": "tx",
+          "txHash": "0202020202020202020202020202020202020202020202020202020202020202",
+          "blockHeight": 11,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a2000101818307825820010101010101010101010101010101010101010101010101010101010101010100581c01010101010101010101010101010101010101010101010101010101",
+          "witnessScriptsHex": []
+        },
+        {
+          "kind": "tx",
+          "txHash": "0303030303030303030303030303030303030303030303030303030303030303",
+          "blockHeight": 12,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "02020202020202020202020202020202020202020202020202020202",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840182582001010101010101010101010101010101010101010101010101010101010101010001a101581c6e4ed75034b68faac190b76fa17c007b978305eb7047fedc807c04ae0281825840830301828200581c010101010101010101010101010101010101010101010101010101018200581c0303030303030303030303030303030303030303030303034403030303",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [
+          {
+            "id": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "status": "active",
+            "seq": "1",
+            "mode": "permissioned",
+            "control": "79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a7",
+            "admission": "79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a7",
+            "profileUrl": null,
+            "profileHash": null,
+            "resignedControl": [
+              "01010101010101010101010101010101010101010101010101010101"
+            ],
+            "resignedAdmission": [
+              "01010101010101010101010101010101010101010101010101010101"
+            ]
+          }
+        ],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0202020202020202020202020202020202020202020202020202020202020202#0",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0303030303030303030303030303030303030303030303030303030303030303#0",
+            "valid": false,
+            "reason": "key new to its role did not sign explicitly"
+          }
+        ]
+      }
+    },
+    {
+      "name": "re-listing a resigned key with its signature",
+      "inputs": [
+        {
+          "kind": "tx",
+          "txHash": "0101010101010101010101010101010101010101010101010101010101010101",
+          "blockHeight": 10,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101",
+            "02020202020202020202020202020202020202020202020202020202"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840001581c79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a7581c79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a70281825840830301828200581c010101010101010101010101010101010101010101010101010101018200581c0202020202020202020202020202020202020202020202024402020202",
+          "witnessScriptsHex": []
+        },
+        {
+          "kind": "tx",
+          "txHash": "0202020202020202020202020202020202020202020202020202020202020202",
+          "blockHeight": 11,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a2000101818307825820010101010101010101010101010101010101010101010101010101010101010100581c01010101010101010101010101010101010101010101010101010101",
+          "witnessScriptsHex": []
+        },
+        {
+          "kind": "tx",
+          "txHash": "0303030303030303030303030303030303030303030303030303030303030303",
+          "blockHeight": 12,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "02020202020202020202020202020202020202020202020202020202",
+            "01010101010101010101010101010101010101010101010101010101",
+            "03030303030303030303030303030303030303030303030303030303"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a300010181840182582001010101010101010101010101010101010101010101010101010101010101010001a101581c6e4ed75034b68faac190b76fa17c007b978305eb7047fedc807c04ae0281825840830301828200581c010101010101010101010101010101010101010101010101010101018200581c0303030303030303030303030303030303030303030303034403030303",
+          "witnessScriptsHex": []
+        },
+        {
+          "kind": "tx",
+          "txHash": "0404040404040404040404040404040404040404040404040404040404040404",
+          "blockHeight": 13,
+          "txIndex": 0,
+          "isValid": true,
+          "invalidBefore": null,
+          "invalidHereafter": null,
+          "requiredSigners": [
+            "01010101010101010101010101010101010101010101010101010101"
+          ],
+          "witnessKeyHashes": [],
+          "payloadHex": "a2000101818307825820010101010101010101010101010101010101010101010101010101010101010100581c01010101010101010101010101010101010101010101010101010101",
+          "witnessScriptsHex": []
+        }
+      ],
+      "expect": {
+        "groups": [
+          {
+            "id": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "status": "active",
+            "seq": "3",
+            "mode": "permissioned",
+            "control": "79f1301ea1097f9097337433473d2762453cf11987a3c7779593a3a7",
+            "admission": "6e4ed75034b68faac190b76fa17c007b978305eb7047fedc807c04ae",
+            "profileUrl": null,
+            "profileHash": null,
+            "resignedControl": [
+              "01010101010101010101010101010101010101010101010101010101"
+            ],
+            "resignedAdmission": [
+              "01010101010101010101010101010101010101010101010101010101"
+            ]
+          }
+        ],
+        "instances": [],
+        "verdicts": [
+          {
+            "ref": "0101010101010101010101010101010101010101010101010101010101010101#0",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0202020202020202020202020202020202020202020202020202020202020202#0",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0303030303030303030303030303030303030303030303030303030303030303#0",
+            "valid": true,
+            "reason": null
+          },
+          {
+            "ref": "0404040404040404040404040404040404040404040404040404040404040404#0",
+            "valid": true,
+            "reason": null
           }
         ]
       }

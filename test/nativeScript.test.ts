@@ -243,6 +243,8 @@ describe('satisfiableWithoutSignature', () => {
     expect(free([3, -1, [sig(K(1))]])).toBe(true);
     expect(free(anyOf(after(0)))).toBe(true);
     expect(free(allOf(after(5), before(9)))).toBe(true);
+    // Overestimates on purpose: conflicting time locks that nothing can satisfy still count.
+    expect(free(allOf(after(10), before(5)))).toBe(true);
     expect(free(nOfK(1, sig(K(1)), before(3)))).toBe(true);
   });
   it('is false when a signature is always needed', () => {
