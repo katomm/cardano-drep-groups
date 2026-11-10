@@ -43,7 +43,7 @@ const createGroup = (): ChainInput => ({
   kind: 'tx',
   tx: {
     txHash: txHash(0), blockHeight: 10, txIndex: 0, isValid: true, invalidBefore: null, invalidHereafter: null,
-    requiredSigners: [], witnessKeyHashes: [K(1)], payload: buildPayload([ev.create(0, hashOf(CTL), null)], [CTL]),
+    requiredSigners: [K(1)], witnessKeyHashes: [], payload: buildPayload([ev.create(0, hashOf(CTL), null)], [CTL]),
     payloadRepeated: false, witnessScripts: [],
   },
 });

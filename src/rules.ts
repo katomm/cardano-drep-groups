@@ -35,7 +35,7 @@ const REASONS = [
   'control policy unresolved',
   'admission policy unresolved',
   'control policy not satisfied',
-  'listed key did not sign',
+  'listed key did not sign explicitly',
   'local reference must point to an earlier event',
   'unknown group',
   'group dissolved',
@@ -43,7 +43,7 @@ const REASONS = [
   'new control policy unresolved',
   'open group has no admission policy',
   'new admission policy unresolved',
-  'newly listed key did not sign',
+  'key new to its role did not sign explicitly',
   'member key not in required_signers',
   'member script unresolved',
   'member script not satisfied',
@@ -84,6 +84,14 @@ function keysOf(w: RuleWorld, at: Pos, ...hashes: Array<Hex | null | undefined>)
   return out;
 }
 
+// Keys listed by the new policy of a role that its current policy does not list. A role
+// without a new policy has none.
+function newToRole(w: RuleWorld, at: Pos, next: Hex | undefined, current: Hex | null): Hex[] {
+  if (next === undefined) return [];
+  const listed = new Set(keysOf(w, at, current));
+  return keysOf(w, at, next).filter((k) => !listed.has(k));
+}
+
 function memberAuthorized(w: RuleWorld, c: Credential, ctx: EvalContext, required: ReadonlySet<Hex>, at: Pos): Reason | null {
   if (c.kind === 'key') return required.has(c.hash) ? null : 'member key not in required_signers';
   const s = w.scriptAt(c.hash, at) ?? w.memberScriptAt(c, at);
@@ -91,13 +99,15 @@ function memberAuthorized(w: RuleWorld, c: Credential, ctx: EvalContext, require
   return evaluateNativeScript(s, ctx) ? null : 'member script not satisfied';
 }
 
-export function controlRule(w: RuleWorld, e: GroupEvent, self: EventRef, ctx: EvalContext, at: Pos): RuleResult {
+export function controlRule(
+  w: RuleWorld, e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Pos,
+): RuleResult {
   if (e.tag === 'create') {
     if (!w.scriptAt(e.control, at)) return fail('control policy unresolved');
     if (e.admission !== null && !w.scriptAt(e.admission, at)) return fail('admission policy unresolved');
     if (!policy(w, e.control, ctx, at)) return fail('control policy not satisfied');
-    // Spec A4 consent rule: every listed key signed the create.
-    if (keysOf(w, at, e.control, e.admission).some((k) => !ctx.signers.has(k))) return fail('listed key did not sign');
+    // Consent rule: every listed key signed the create explicitly, a vkey witness alone is no consent.
+    if (keysOf(w, at, e.control, e.admission).some((k) => !required.has(k))) return fail('listed key did not sign explicitly');
     return ok(self, null, {
       kind: 'version',
       version: {
@@ -122,10 +132,10 @@ export function controlRule(w: RuleWorld, e: GroupEvent, self: EventRef, ctx: Ev
     if (g.mode === 'open') return fail('open group has no admission policy', g.id);
     if (!w.scriptAt(c.admission, at)) return fail('new admission policy unresolved', g.id);
   }
-  // Spec A4 consent rule: keys that the current policies do not list must sign.
-  const current = new Set(keysOf(w, at, g.control, g.admission));
-  const added = keysOf(w, at, c.control, c.admission).filter((k) => !current.has(k));
-  if (added.some((k) => !ctx.signers.has(k))) return fail('newly listed key did not sign', g.id);
+  // Consent rule per role: a key the new policy lists and the current policy of the same
+  // role does not list signs explicitly, so a key moving from admission into control signs again.
+  if (newToRole(w, at, c.control, g.control).some((k) => !required.has(k))) return fail('key new to its role did not sign explicitly', g.id);
+  if (newToRole(w, at, c.admission, g.admission).some((k) => !required.has(k))) return fail('key new to its role did not sign explicitly', g.id);
   const next: GroupVersion = { ...g, at, seq: g.seq + 1n };
   if (c.control !== undefined) next.control = c.control;
   if (c.admission !== undefined) next.admission = c.admission;
@@ -190,6 +200,6 @@ export function membershipRule(
 export function eventRule(
   w: RuleWorld, e: GroupEvent, self: EventRef, ctx: EvalContext, required: ReadonlySet<Hex>, at: Pos,
 ): RuleResult {
-  if (e.tag === 'create' || e.tag === 'update' || e.tag === 'dissolve') return controlRule(w, e, self, ctx, at);
+  if (e.tag === 'create' || e.tag === 'update' || e.tag === 'dissolve') return controlRule(w, e, self, ctx, required, at);
   return membershipRule(w, e, self, ctx, required, at);
 }

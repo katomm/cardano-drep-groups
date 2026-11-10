@@ -5,7 +5,7 @@ import { ALL_REASONS, controlRule, eventRule, type GroupVersion, membershipRule,
 import { refKey, replay } from '../src/state.js';
 import type { Credential, EvalContext, EventRef, GroupEvent, Hex, NativeScript } from '../src/types.js';
 import { VECTORS } from '../vectors/definitions.js';
-import { K, T } from './helpers.js';
+import { allOf, buildPayload, ev, hashOf, K, kb, nOfK, ref, sig, T, txIn } from './helpers.js';
 
 const p = (h: number, i = 0): Pos => ({ blockHeight: h, txIndex: 0, txHash: T(h), phase: 2, index: i });
 const cert = (h: number): Pos => ({ blockHeight: h, txIndex: 0, txHash: T(h), phase: 0, index: 0 });
@@ -128,7 +128,7 @@ describe('rules over a lazy world', () => {
 
   it('a dissolve writes the dissolved version only, never instances', () => {
     const w = lazyWorld({ versions: [version({ at: p(5) })], instances: [instance({ joinId: J, joinedAt: p(10) })] });
-    expect(controlRule(w, { tag: 'dissolve', group: G, seq: 0n }, selfAt(30), ctx, p(30))).toEqual({
+    expect(controlRule(w, { tag: 'dissolve', group: G, seq: 0n }, selfAt(30), ctx, required, p(30))).toEqual({
       reason: null, group: G, subject: null,
       writes: [{ kind: 'version', version: version({ at: p(30), status: 'dissolved' }) }],
     });
@@ -137,7 +137,7 @@ describe('rules over a lazy world', () => {
   it('an update writes a new version at its position with the next seq', () => {
     const w = lazyWorld({ versions: [version({ at: p(5) })] });
     const profile = { url: 'https://x', dataHash: 'dd'.repeat(32) };
-    const r = controlRule(w, { tag: 'update', group: G, seq: 0n, changes: { profile } }, selfAt(30), ctx, p(30));
+    const r = controlRule(w, { tag: 'update', group: G, seq: 0n, changes: { profile } }, selfAt(30), ctx, required, p(30));
     expect(r.writes).toEqual([{ kind: 'version', version: version({ at: p(30), seq: 1n, profile, profileSetAt: p(30) }) }]);
   });
 
@@ -146,6 +146,37 @@ describe('rules over a lazy world', () => {
     const create: GroupEvent = { tag: 'create', mode: 'open', control: CONTROL, admission: null, profile: null };
     expect(membershipRule(w, create, selfAt(30), ctx, required, p(30)))
       .toEqual({ reason: 'unknown event', group: null, subject: null, writes: [] });
+  });
+});
+
+describe('consent by explicit signature, per role', () => {
+  const k1 = sig(K(1));
+  const k2 = sig(K(2));
+  const create = (mode: 0 | 1, control: unknown[], admission: unknown[] | null, rs: string[], wk: string[] = []) =>
+    txIn({
+      hash: T(1), h: 10, rs, wk,
+      payload: buildPayload([ev.create(mode, hashOf(control), admission ? hashOf(admission) : null)], admission ? [control, admission] : [control]),
+    });
+  const update = (changes: Map<number, unknown>, scripts: unknown[][], rs: string[], wk: string[] = []) =>
+    txIn({ hash: T(2), h: 11, rs, wk, payload: buildPayload([ev.update(ref(T(1), 0), 0, changes)], scripts) });
+  const reasons = (inputs: Parameters<typeof replay>[0]) => replay(inputs).verdicts.map((v) => v.reason);
+
+  it('a create needs every listed key in required_signers, a vkey witness is not enough', () => {
+    expect(reasons([create(0, k1, null, [], [K(1)])])).toEqual(['listed key did not sign explicitly']);
+    expect(reasons([create(0, k1, null, [K(1)])])).toEqual([null]);
+  });
+
+  it('a key moving from admission into control signs explicitly again', () => {
+    const both = allOf(k1, k2);
+    const set = new Map([[0, kb(hashOf(both))]]);
+    const base = create(1, k1, k2, [K(1), K(2)]);
+    expect(reasons([base, update(set, [both], [K(1)], [K(2)])])).toEqual([null, 'key new to its role did not sign explicitly']);
+    expect(reasons([base, update(set, [both], [K(1), K(2)])])).toEqual([null, null]);
+  });
+
+  it('policy satisfaction still counts vkey witnesses', () => {
+    const two = nOfK(2, k1, k2);
+    expect(reasons([create(0, two, null, [K(1), K(2)]), update(new Map(), [], [K(1)], [K(2)])])).toEqual([null, null]);
   });
 });
 

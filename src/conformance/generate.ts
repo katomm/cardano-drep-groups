@@ -189,8 +189,9 @@ class ChainBuilder {
   }
 
   // Signs with `keys`, mostly as required signers, sometimes as vkey witnesses only.
-  private sign(d: Draft, keys: Hex[]): void {
-    for (const k of keys) (this.rng.chance(0.8) ? d.rs : d.wk).add(k);
+  // Consent needs an explicit signature, so `explicit` puts every key into required signers.
+  private sign(d: Draft, keys: Hex[], explicit = false): void {
+    for (const k of keys) (explicit || this.rng.chance(0.8) ? d.rs : d.wk).add(k);
   }
 
   private publish(d: Draft, s: Script): void {
@@ -248,7 +249,7 @@ class ChainBuilder {
       if (control.satisfy.length === control.listed.length) return false;
       this.sign(d, control.satisfy);
     } else if (flaw !== 'unsigned') {
-      this.sign(d, [...control.listed, ...(admission?.listed ?? [])]);
+      this.sign(d, [...control.listed, ...(admission?.listed ?? [])], true);
     }
     const ref = this.self(d);
     const ev: Cbor[] = [0, mode === 'open' ? 0 : 1, hexToBytes(control.hash), admission ? hexToBytes(admission.hash) : []];
@@ -314,11 +315,15 @@ class ChainBuilder {
     }
     const seq = g ? (flaw === 'stale' ? (g.seq === 0n || this.rng.chance(0.5) ? g.seq + 1n : g.seq - 1n) : g.seq) : BigInt(this.rng.int(3));
     if (g && flaw !== 'unsigned') this.sign(d, g.control.satisfy);
-    const added = [...(next.control?.listed ?? []), ...(next.admission?.listed ?? [])];
+    // Consent is per role: a key is new when the current policy of the same role does not list it.
+    const newTo = (p: Script | undefined, current: Script | null | undefined): Hex[] =>
+      (p?.listed ?? []).filter((k) => !(current?.listed ?? []).includes(k));
+    const added = [...newTo(next.control, g?.control), ...newTo(next.admission, g?.admission)];
     if (flaw === 'newKeys') {
-      const current = new Set([...(g?.control.listed ?? []), ...(g?.admission?.listed ?? [])]);
-      if (!added.some((k) => !current.has(k) && !d.rs.has(k) && !d.wk.has(k))) return false;
-    } else if (flaw !== 'unsigned') this.sign(d, added);
+      // The new keys sign as vkey witnesses only, which is no consent.
+      if (!added.some((k) => !d.rs.has(k))) return false;
+      for (const k of added) d.wk.add(k);
+    } else if (flaw !== 'unsigned') this.sign(d, added, true);
     d.events.push([1, target.ref, seq, changes]);
     if ((flaw === 'none' || flaw === 'flood') && g && !d.ignored) {
       g.seq += 1n;

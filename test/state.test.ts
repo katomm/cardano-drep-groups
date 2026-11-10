@@ -26,11 +26,13 @@ describe('replay: groups', () => {
   });
 
   it('rejects create when a listed key did not sign', () => {
-    expect(replay([createTx({ rs: [K(1), K(2)] })]).verdicts[0]).toMatchObject({ valid: false, reason: 'listed key did not sign' });
+    expect(replay([createTx({ rs: [K(1), K(2)] })]).verdicts[0]).toMatchObject({ valid: false, reason: 'listed key did not sign explicitly' });
   });
 
-  it('counts witness keys towards policy and consent', () => {
-    expect(replay([createTx({ rs: [], wk: ALL })]).groups.length).toBe(1);
+  it('counts witness keys towards the policy but not towards consent', () => {
+    const s = replay([createTx({ rs: [], wk: ALL })]);
+    expect(s.groups).toEqual([]);
+    expect(s.verdicts[0]).toMatchObject({ valid: false, reason: 'listed key did not sign explicitly' });
   });
 
   it('rejects a policy published after its first use', () => {
@@ -65,7 +67,7 @@ describe('replay: groups', () => {
     const oldKeys = upd(T(4), 13, 1, new Map(), [K(1), K(2)]);
     const newKey = upd(T(5), 14, 1, new Map(), [K(4)]);
     const s = replay([createTx(), noConsent, withConsent, oldKeys, newKey]);
-    expect(s.verdicts.map((v) => v.reason)).toEqual([null, 'newly listed key did not sign', null, 'control policy not satisfied', null]);
+    expect(s.verdicts.map((v) => v.reason)).toEqual([null, 'key new to its role did not sign explicitly', null, 'control policy not satisfied', null]);
     expect(s.groups[0]).toMatchObject({ control: hashOf(newCtrl), seq: 2n });
   });
 

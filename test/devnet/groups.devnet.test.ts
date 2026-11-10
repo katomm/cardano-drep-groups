@@ -387,9 +387,9 @@ describe('DRep groups on a devnet', () => {
     const payload = buildPayload([ev.create(0, hashOf(control1), null)]);
     const tx = await mustInclude('create 2 of 3 signed', { payload, listed: [P0, P1] });
     expect(new Set(tx.chain.witnessKeyHashes)).toEqual(new Set([P0.hash, P1.hash]));
-    expect(verdict(tx.hash, 0)).toMatchObject({ tag: 'create', valid: false, reason: 'listed key did not sign' });
+    expect(verdict(tx.hash, 0)).toMatchObject({ tag: 'create', valid: false, reason: 'listed key did not sign explicitly' });
     expect(group({ txHash: tx.hash, index: 0 })).toBeUndefined();
-    note('S2 accepted by the ledger, library verdict "listed key did not sign"');
+    note('S2 accepted by the ledger, library verdict "listed key did not sign explicitly"');
     await checkEngine();
   });
 
@@ -429,9 +429,9 @@ describe('DRep groups on a devnet', () => {
     }
     expect(r.chain.requiredSigners).toEqual([P1.hash]);
     expect(r.chain.witnessKeyHashes).toContain(P2.hash);
-    expect(verdict(r.hash, 0)).toMatchObject({ tag: 'create', valid: true, reason: null });
-    expect(group({ txHash: r.hash, index: 0 })).toMatchObject({ control: hashOf(control), status: 'active' });
-    note('S4 accepted: the ledger takes a vkey witness of a key that is in neither required_signers nor any input, the library counts it (union signer set)');
+    expect(verdict(r.hash, 0)).toMatchObject({ tag: 'create', valid: false, reason: 'listed key did not sign explicitly' });
+    expect(group({ txHash: r.hash, index: 0 })).toBeUndefined();
+    note('S4 accepted: the ledger takes a vkey witness of a key that is in neither required_signers nor any input, the library counts it for the policy but not as consent');
     await checkEngine();
   });
 
@@ -699,7 +699,7 @@ describe('DRep groups on a devnet', () => {
     await checkEngine();
   });
 
-  it('13: approve plus update where the newly listed key did not sign', async () => {
+  it('13: approve plus update where a key new to its role did not sign', async () => {
     const join = await joinTx('join D2', group12, D2);
     const joinId = { txHash: join.hash, index: 0 };
     const three = majorityScript(hashes(P0, P1, P2), 3);
@@ -713,10 +713,10 @@ describe('DRep groups on a devnet', () => {
       }),
       listed: [P0, P1],
     });
-    expect(judged(combined.hash)).toEqual([good('approve'), bad('update', 'newly listed key did not sign')]);
+    expect(judged(combined.hash)).toEqual([good('approve'), bad('update', 'key new to its role did not sign explicitly')]);
     expect(instance(joinId)).toMatchObject({ state: 'active' });
     expect(group(group12)).toMatchObject({ control: majorityScript(hashes(P0, P1), 2).hash, seq: 1n });
-    note('S13 accepted by the ledger: approve valid, update "newly listed key did not sign"');
+    note('S13 accepted by the ledger: approve valid, update "key new to its role did not sign explicitly"');
     await checkEngine();
   });
 

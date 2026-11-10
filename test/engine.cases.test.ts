@@ -36,7 +36,7 @@ const G = (n: number): unknown[] => ref(T(n), 0);
 const J = (n: number): unknown[] => ref(T(n), 0);
 
 const create = (tx: number, h: number, mode: 0 | 1): ChainInput =>
-  txIn({ hash: T(tx), h, wk: [A], payload: buildPayload([ev.create(mode, ctl, mode === 1 ? ctl : null)], [CTL]) });
+  txIn({ hash: T(tx), h, rs: [A], payload: buildPayload([ev.create(mode, ctl, mode === 1 ? ctl : null)], [CTL]) });
 // A key join, signed through required_signers unless `signed` is false.
 const join = (tx: number, h: number, group: unknown[], member = M, signed = true): ChainInput =>
   txIn({ hash: T(tx), h, rs: signed ? [member] : [], wk: [member], payload: buildPayload([ev.join(group, 'key', member)]) });
@@ -440,7 +440,7 @@ describe('named engine cases', () => {
       deliver(
         reg(m, 0, 5), create(0x10, 10, 0),
         txIn({ hash: T(0x20), h: 20, rs: [M], payload: buildPayload([ev.join(G(0x10), 'key', M)], [NEW]) }),
-        txIn({ hash: T(0x30), h: 30, wk: [A, K(5)], payload: buildPayload([ev.update(G(0x10), 0, new Map([[0, kb(hashOf(NEW))]]))]) }),
+        txIn({ hash: T(0x30), h: 30, rs: [A, K(5)], payload: buildPayload([ev.update(G(0x10), 0, new Map([[0, kb(hashOf(NEW))]]))]) }),
       ),
       frontiers(30), run({ controlTxs: 1 }), run({ controlTxs: 1 }), run({ controlTxs: 1 }), run({ controlTxs: 1 }),
     ];
@@ -467,7 +467,7 @@ describe('named engine cases', () => {
 
   it('same tx folds', async () => {
     const membership = txIn({
-      hash: T(0x10), h: 10, rs: [M], wk: [A],
+      hash: T(0x10), h: 10, rs: [M, A],
       payload: buildPayload([
         ev.create(1, ctl, ctl),            // 0, its control script is in this payload
         ev.update(local(0), 0, new Map()), // 1
@@ -479,7 +479,7 @@ describe('named engine cases', () => {
       ], [CTL]),
     });
     const control = txIn({
-      hash: T(0x11), h: 11, wk: [A2],
+      hash: T(0x11), h: 11, rs: [A2],
       payload: buildPayload([ev.create(0, hashOf(CTL2), null), ev.dissolve(local(0), 0)], [CTL2]),
     });
     const steps = [deliver(reg(m, 0, 5), membership, control), frontiers(11), run({ controlTxs: 1, credentialInputs: 1 })];

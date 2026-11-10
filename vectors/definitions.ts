@@ -96,7 +96,7 @@ export const VECTORS: VectorDef[] = [
   {
     name: 'create needs every listed key, a group that was never created cannot be joined',
     inputs: [reg, openCreate([K(1), K(2)]), join(T(2), 11)],
-    expect: { groups: [], instances: [], verdicts: [V(T(1), false, 'listed key did not sign'), V(T(2), false, 'unknown group')] },
+    expect: { groups: [], instances: [], verdicts: [V(T(1), false, 'listed key did not sign explicitly'), V(T(2), false, 'unknown group')] },
   },
   {
     name: 'create below the threshold',
@@ -141,7 +141,7 @@ export const VECTORS: VectorDef[] = [
     expect: {
       groups: [G(T(1), { seq: '2', control: hashOf(newCtrl) })],
       instances: [],
-      verdicts: [V(T(1), true), V(T(2), false, 'newly listed key did not sign'), V(T(3), true), V(T(4), false, 'control policy not satisfied'), V(T(5), true)],
+      verdicts: [V(T(1), true), V(T(2), false, 'key new to its role did not sign explicitly'), V(T(3), true), V(T(4), false, 'control policy not satisfied'), V(T(5), true)],
     },
   },
   {
@@ -208,7 +208,7 @@ export const VECTORS: VectorDef[] = [
   {
     name: 'policy and consent satisfied by witnesses only',
     inputs: [txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(0, C, null)], [ctrl]), wk: ALL })],
-    expect: { groups: [G(T(1))], instances: [], verdicts: [V(T(1), true)] },
+    expect: { groups: [], instances: [], verdicts: [V(T(1), false, 'listed key did not sign explicitly')] },
   },
   {
     name: 'script forms: all [], any [], n_of_k 0, n above k, negative n',
@@ -285,7 +285,7 @@ export const VECTORS: VectorDef[] = [
   {
     name: 'policy and consent satisfied by required_signers and witnesses together',
     inputs: [txIn({ hash: T(1), h: 10, payload: buildPayload([ev.create(0, C, null)], [ctrl]), rs: [K(1)], wk: [K(2), K(3)] })],
-    expect: { groups: [G(T(1))], instances: [], verdicts: [V(T(1), true)] },
+    expect: { groups: [], instances: [], verdicts: [V(T(1), false, 'listed key did not sign explicitly')] },
   },
   {
     name: 'an unknown payload key with a deep value is ignored and the events count',
