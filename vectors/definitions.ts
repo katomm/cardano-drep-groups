@@ -302,7 +302,7 @@ export const VECTORS: VectorDef[] = [
         V(T(1), true, null, 0),
         V(T(1), false, 'join: bad shape', 1),
         V(T(1), false, 'unknown event tag', 2),
-        V(T(1), false, 'create: open group must not have an admission policy', 3),
+        V(T(1), false, 'create: bad profile anchor', 3),
         V(T(1), false, 'update: bad shape', 4),
         V(T(1), true, null, 5),
         V(T(1), false, 'join: bad shape', 6),
@@ -373,7 +373,7 @@ export const VECTORS: VectorDef[] = [
     inputs: [
       txIn({
         hash: T(1), h: 10, rs: ALL,
-        payload: buildPayload([[0, 0, kb(C), [], [['https://example.org/', '\uFEFFprofile', '.json'], kb(T(0x77))]]], [ctrl]),
+        payload: buildPayload([[0, 0, kb(C), [['https://example.org/', '\uFEFFprofile', '.json'], kb(T(0x77))]]], [ctrl]),
       }),
     ],
     expect: {

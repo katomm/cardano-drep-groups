@@ -2,6 +2,11 @@
 
 All notable changes to this package. Versions follow [semantic versioning](https://semver.org). While the CIP is a draft, minor versions may contain breaking changes.
 
+## 0.6.0 (2026-11-20)
+
+- **Open create without an admission field** (breaking on chain): an open group's `create` is `[0, 0, control, ? profile]`, the empty array in the admission position is gone. A permissioned `create` stays `[0, 1, control, admission, ? profile]`. The decoder reads the mode first and finds the profile from it. An open `create` in the old form decodes as `create: bad profile anchor`, and the decoder reason `create: open group must not have an admission policy` is gone.
+- **Test vectors**: open creates use the new form.
+
 ## 0.5.0 (2026-11-10)
 
 - **Group id display form** uses a one byte index as in CIP-0129 (breaking for stored ids): 33 bytes `tx_hash || uint8(event_index)`. `groupIdToBech32` throws for an index above 255 and `groupIdFromBech32` rejects the 34 byte form. The on-chain data is unchanged.

@@ -130,18 +130,21 @@ function decodeEvent(b: Uint8Array, off: number): GroupEvent | string {
   const tag = uintAt(b, v[0]);
   switch (tag) {
     case 0n: {
-      if (v.length !== 4 && v.length !== 5) return 'create: wrong arity';
+      if (v.length < 3) return 'create: wrong arity';
       const mode = uintAt(b, v[1]);
       const control = hash28At(b, v[2]);
       if (!control || (mode !== 0n && mode !== 1n)) return 'create: bad mode or control';
+      // An open create has no admission field, so its profile sits one position earlier.
+      const fixed = mode === 1n ? 4 : 3;
+      if (v.length !== fixed && v.length !== fixed + 1) return 'create: wrong arity';
       let admission: string | null = null;
       if (mode === 1n) {
         admission = hash28At(b, v[3]);
         if (!admission) return 'create: permissioned group needs an admission policy';
-      } else if (arrayAt(b, v[3])?.length !== 0) return 'create: open group must not have an admission policy';
+      }
       let profile: Anchor | null = null;
-      if (v.length === 5) {
-        profile = anchorAt(b, v[4]);
+      if (v.length === fixed + 1) {
+        profile = anchorAt(b, v[fixed]);
         if (!profile) return 'create: bad profile anchor';
       }
       return { tag: 'create', mode: mode === 1n ? 'permissioned' : 'open', control, admission, profile };

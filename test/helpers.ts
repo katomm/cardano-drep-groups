@@ -35,7 +35,8 @@ const cred = (kind: 'key' | 'script', hash: string): unknown[] => [kind === 'key
 
 export const ev = {
   create: (mode: 0 | 1, control: string, admission: string | null, profile?: { url: string; hash: string }): unknown[] => {
-    const e: unknown[] = [0, mode, hexToBytes(control), admission ? hexToBytes(admission) : []];
+    const e: unknown[] = [0, mode, hexToBytes(control)];
+    if (admission) e.push(hexToBytes(admission));
     if (profile) e.push([[profile.url], hexToBytes(profile.hash)]);
     return e;
   },
