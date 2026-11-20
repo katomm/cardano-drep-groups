@@ -1006,4 +1006,68 @@ describe('DRep groups on a devnet', () => {
     note('S24 accepted: reg_drep of a native script credential whose script is only a reference script on a reference input, the join resolves it through decodeTxRefs of the producing transaction and is valid');
     await checkEngine();
   });
+
+  // Policy size against the 16 KB transaction limit. Keys of unfunded accounts
+  // only witness. Every key new to a role is listed and signs explicitly, as the
+  // consent rule requires, so a founding transaction grows with every listed key.
+  const bigKeys = (from: number, count: number) => Array.from({ length: count }, (_, i) => testKey(100 + from + i, 0));
+  const twoThirds = (n: number) => Math.ceil((2 * n) / 3);
+  let group25: EventRef;
+  let shared63: TestKey[];
+
+  it('25: a permissioned create with shared 2/3 control and admission policies of 63 keys', async () => {
+    shared63 = bigKeys(0, 63);
+    const policy = majorityScript(hashes(...shared63), twoThirds(63));
+    const payload = encodePayload({
+      events: [{ tag: 'create', mode: 'permissioned', control: policy.hash, admission: policy.hash, profile: null }],
+      scripts: [policy.script],
+    });
+    const tx = await mustInclude('create shared 63', { payload, listed: shared63 });
+    group25 = { txHash: tx.hash, index: 0 };
+    expect(judged(tx.hash)).toEqual([good('create')]);
+    note(`S25 accepted: shared 2/3 policy of 63 keys (64 nodes), 63 explicit signatures, payload ${payload.length} bytes, transaction ${tx.cbor.length} bytes`);
+  });
+
+  it('26: an update of that group signed by 42 of the 63 keys', async () => {
+    const signers = shared63.slice(0, twoThirds(63));
+    const payload = encodePayload({ events: [{ tag: 'update', group: group25, seq: 0n, changes: {} }] });
+    const tx = await mustInclude('update 42 of 63', { payload, listed: signers });
+    expect(judged(tx.hash)).toEqual([good('update')]);
+    note(`S26 accepted: an update signed by ${signers.length} of 63 keys, transaction ${tx.cbor.length} bytes`);
+  });
+
+  it('27: disjoint 2/3 control and admission policies of 40 keys each', async () => {
+    const a = bigKeys(100, 40);
+    const b = bigKeys(200, 40);
+    const control = majorityScript(hashes(...a), twoThirds(40));
+    const admission = majorityScript(hashes(...b), twoThirds(40));
+    const payload = encodePayload({
+      events: [{ tag: 'create', mode: 'permissioned', control: control.hash, admission: admission.hash, profile: null }],
+      scripts: [control.script, admission.script],
+    });
+    const tx = await mustInclude('create disjoint 40 + 40', { payload, listed: [...a, ...b] });
+    expect(judged(tx.hash)).toEqual([good('create')]);
+    note(`S27 accepted: disjoint policies of 40 keys each, 80 explicit signatures, payload ${payload.length} bytes, transaction ${tx.cbor.length} bytes`);
+  });
+
+  it('28: disjoint policies of 50 keys each exceed the transaction size limit', async () => {
+    const a = bigKeys(300, 50);
+    const b = bigKeys(400, 50);
+    const control = majorityScript(hashes(...a), twoThirds(50));
+    const admission = majorityScript(hashes(...b), twoThirds(50));
+    const payload = encodePayload({
+      events: [{ tag: 'create', mode: 'permissioned', control: control.hash, admission: admission.hash, profile: null }],
+      scripts: [control.script, admission.script],
+    });
+    let error: string;
+    try {
+      const r = await send('create disjoint 50 + 50', { payload, listed: [...a, ...b] });
+      if (r.ok) throw new Error(`unexpectedly included at ${r.cbor.length} bytes`);
+      error = r.error;
+    } catch (err) {
+      error = errorText(err);
+      if (error.startsWith('unexpectedly included')) throw err;
+    }
+    note(`S28 rejected: disjoint policies of 50 keys each (payload ${payload.length} bytes): ${error.slice(0, 300)}`);
+  });
 });
