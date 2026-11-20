@@ -297,7 +297,8 @@ class ChainBuilder {
       this.sign(d, [...control.listed, ...(admission?.listed ?? [])], true);
     }
     const ref = this.self(d);
-    const ev: Cbor[] = [0, mode === 'open' ? 0 : 1, hexToBytes(control.hash), admission ? hexToBytes(admission.hash) : []];
+    const ev: Cbor[] = [0, mode === 'open' ? 0 : 1, hexToBytes(control.hash)];
+    if (admission) ev.push(hexToBytes(admission.hash));
     if (this.rng.chance(0.2)) ev.push([[`ipfs://g${ref.index}`], hexToBytes(keyHash(0x77).padEnd(64, '0'))]);
     d.events.push(ev);
     if (flaw === 'none' && !d.ignored && d.validity) {

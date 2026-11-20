@@ -11,7 +11,7 @@ const create = ev.create(0, hashOf(ctrl), null);
 
 describe('anchor URL chunks', () => {
   it('concatenates chunks unchanged, keeping a U+FEFF at a chunk start', () => {
-    const e = [0, 0, hexToBytes(K(1)), [], [['https://example.org/', '\uFEFFprofile.json'], new Uint8Array(32)]];
+    const e = [0, 0, hexToBytes(K(1)), [['https://example.org/', '\uFEFFprofile.json'], new Uint8Array(32)]];
     const d = decodePayload(buildPayload([e]));
     const ev0 = d?.events[0];
     expect(ev0?.ok && ev0.event.tag === 'create' ? ev0.event.profile?.url : null).toBe('https://example.org/\uFEFFprofile.json');
@@ -130,7 +130,7 @@ describe('decodePayload layer 3', () => {
   it('invalidates an event whose url chunk is not valid UTF-8', () => {
     const badText = hexToBytes('62c328'); // text of 2 bytes, 0xc3 0x28 is not UTF-8
     const anchor = concatBytes([hexToBytes('82'), hexToBytes('81'), badText, encode(new Uint8Array(32))]);
-    const badCreate = concatBytes([hexToBytes('85'), encode(0), encode(0), encode(new Uint8Array(28)), encode([]), anchor]);
+    const badCreate = concatBytes([hexToBytes('84'), encode(0), encode(0), encode(new Uint8Array(28)), anchor]);
     const events = concatBytes([hexToBytes('82'), badCreate, encode(create)]);
     const p = decodePayload(concatBytes([hexToBytes('a2'), encode(0), encode(1), encode(1), events]));
     expect(p?.events.map((e) => (e.ok ? e.event.tag : e.reason))).toEqual(['create: bad profile anchor', 'create']);
@@ -159,10 +159,10 @@ describe('decodePayload layer 3', () => {
     expect(p?.events[1]?.ok).toBe(false);
   });
   it('joins url chunks and rejects chunks over 64 bytes', () => {
-    const ok = decodePayload(buildPayload([[0, 0, new Uint8Array(28), [], [['https://x.test/', 'g.json'], new Uint8Array(32)]]]));
+    const ok = decodePayload(buildPayload([[0, 0, new Uint8Array(28), [['https://x.test/', 'g.json'], new Uint8Array(32)]]]));
     const first = ok?.events[0];
     expect(first?.ok && first.event.tag === 'create' ? first.event.profile?.url : null).toBe('https://x.test/g.json');
-    const bad = decodePayload(buildPayload([[0, 0, new Uint8Array(28), [], [['a'.repeat(65)], new Uint8Array(32)]]]));
+    const bad = decodePayload(buildPayload([[0, 0, new Uint8Array(28), [['a'.repeat(65)], new Uint8Array(32)]]]));
     expect(bad?.events[0]?.ok).toBe(false);
   });
 });

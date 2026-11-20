@@ -170,8 +170,8 @@ function eventValue(e: GroupEvent, index: number): Cbor {
         0,
         e.mode === 'open' ? 0 : 1,
         hexBytes(e.control, HASH28, 'control hash'),
-        e.admission === null ? [] : hexBytes(e.admission, HASH28, 'admission hash'),
       ];
+      if (e.admission !== null) v.push(hexBytes(e.admission, HASH28, 'admission hash'));
       if (e.profile !== null) v.push(anchorValue(e.profile));
       return v;
     }
